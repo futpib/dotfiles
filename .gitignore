@@ -1,3 +1,9 @@
 *
 !.gitignore
 !.emacs
+!.bash_colors
+!.bash_preexec
+!.bashrc
+!.xmonad/
+.xmonad/*
+!.xmonad/xmonad.hs
