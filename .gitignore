@@ -12,3 +12,5 @@
 !.config/xmobar
 .config/xmobar/*
 !.config/xmobar/xmobarrc
+.config/dunst/*
+!.config/dunst/dunstrc
