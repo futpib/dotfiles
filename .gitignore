@@ -7,3 +7,8 @@
 !.xmonad/
 .xmonad/*
 !.xmonad/xmonad.hs
+!.config
+.config/*
+!.config/xmobar
+.config/xmobar/*
+!.config/xmobar/xmobarrc
