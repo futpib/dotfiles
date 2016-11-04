@@ -21,7 +21,7 @@
  '(js2-strict-var-redeclaration-warning nil)
  '(package-selected-packages
    (quote
-    (web-beautify evil-magit magit-svn magit tidy php-mode auto-complete ac-js2 csharp-mode web-mode less-css-mode jade-mode evil js2-mode)))
+    (editorconfig web-beautify evil-magit magit-svn magit tidy php-mode auto-complete ac-js2 csharp-mode web-mode less-css-mode jade-mode evil js2-mode)))
  '(safe-local-variable-values
    (quote
     ((web-mode-markup-indent-offset . 2)
@@ -42,6 +42,10 @@
 
 (require 'evil)
 (evil-mode 1)
+
+(add-to-list 'load-path "~/.emacs.d/lisp")
+(require 'editorconfig)
+(editorconfig-mode 1)
 
 (add-to-list 'auto-mode-alist '("\\.js\\'" . js2-mode))
 
