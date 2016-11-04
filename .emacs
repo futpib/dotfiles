@@ -82,7 +82,7 @@
 (set-face-attribute hl-line-face nil :background "black")
 (set-face-attribute hl-line-face nil :foreground nil)
 
-(add-hook 'js2-mode-hook 'ac-js2-mode)
+(setq web-mode-enable-current-element-highlight t)
 
 (require 'web-mode)
 (add-to-list 'auto-mode-alist '("\\.php\\'" . web-mode))
