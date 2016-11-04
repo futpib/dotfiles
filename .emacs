@@ -97,6 +97,13 @@
 
 (setq backup-directory-alist `(("." . "~/.emacs-saves")))
 
+(require 'company)
+(setq company-idle-delay 0)
+
+(add-hook 'js2-mode-hook
+          (lambda ()
+            (company-mode-on)))
+
 ;; tide
 (add-hook 'typescript-mode-hook
           (lambda ()
@@ -110,6 +117,9 @@
 
 ;; aligns annotation to the right hand side
 (setq company-tooltip-align-annotations t)
+
+(eval-after-load 'company
+  '(add-to-list 'company-backends 'company-tern))
 
 (server-start)
 
