@@ -11,6 +11,14 @@
  '(ansi-color-faces-vector
    [default default default italic underline success warning error])
  '(custom-enabled-themes (quote (wombat)))
+ '(js2-mode-show-parse-errors nil)
+ '(js2-mode-show-strict-warnings nil)
+ '(js2-strict-cond-assign-warning nil)
+ '(js2-strict-inconsistent-return-warning nil)
+ '(js2-strict-missing-semi-warning nil)
+ '(js2-strict-trailing-comma-warning nil)
+ '(js2-strict-var-hides-function-arg-warning nil)
+ '(js2-strict-var-redeclaration-warning nil)
  '(package-selected-packages
    (quote
     (web-beautify evil-magit magit-svn magit tidy php-mode auto-complete ac-js2 csharp-mode web-mode less-css-mode jade-mode evil js2-mode)))
@@ -97,4 +105,26 @@
 
 ;; aligns annotation to the right hand side
 (setq company-tooltip-align-annotations t)
+
+;; flycheck
+;; http://www.flycheck.org/manual/latest/index.html
+(require 'flycheck)
+
+;; turn on flychecking globally
+(add-hook 'after-init-hook #'global-flycheck-mode)
+
+;; disable jshint since we prefer eslint checking
+(setq-default flycheck-disabled-checkers
+  (append flycheck-disabled-checkers
+    '(javascript-jshint)))
+
+;; use eslint with modes for files
+(flycheck-add-mode 'javascript-eslint 'js2-mode)
+
+;; customize flycheck temp file prefix
+(setq-default flycheck-temp-prefix ".flycheck")
+
+;; disable json-jsonlist checking for json files
+(setq-default flycheck-disabled-checkers
+  (append flycheck-disabled-checkers '(json-jsonlist)))
 
