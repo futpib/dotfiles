@@ -38,6 +38,7 @@
  '(hl-line ((t (:background "black"))))
  '(js2-function-param ((t (:foreground "yellow green"))))
  '(region ((t (:background "#444444"))))
+ '(smerge-refined-added ((t (:inherit smerge-refined-change :background "#446644"))))
  '(whitespace-newline ((t (:foreground "dim gray" :weight normal)))))
 
 (require 'evil)
@@ -110,6 +111,10 @@
 ;; aligns annotation to the right hand side
 (setq company-tooltip-align-annotations t)
 
+(server-start)
+
+(setq mouse-autoselect-window t)
+
 ;; flycheck
 ;; http://www.flycheck.org/manual/latest/index.html
 (require 'flycheck)
@@ -131,4 +136,8 @@
 ;; disable json-jsonlist checking for json files
 (setq-default flycheck-disabled-checkers
   (append flycheck-disabled-checkers '(json-jsonlist)))
+
+(windmove-default-keybindings 'meta)
+
+(desktop-save-mode 1)
 
