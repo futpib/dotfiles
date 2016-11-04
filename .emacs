@@ -21,7 +21,7 @@
  '(js2-strict-var-redeclaration-warning nil)
  '(package-selected-packages
    (quote
-    (editorconfig web-beautify evil-magit magit-svn magit tidy php-mode auto-complete ac-js2 csharp-mode web-mode less-css-mode jade-mode evil js2-mode)))
+    (haskell-mode editorconfig web-beautify evil-magit magit-svn magit tidy php-mode auto-complete ac-js2 csharp-mode web-mode less-css-mode jade-mode evil js2-mode)))
  '(safe-local-variable-values
    (quote
     ((web-mode-markup-indent-offset . 2)
@@ -151,3 +151,4 @@
 
 (desktop-save-mode 1)
 
+(add-hook 'haskell-mode-hook 'haskell-indentation-mode)
