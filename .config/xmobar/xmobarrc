@@ -51,13 +51,13 @@ Config {
                              ] 10
 
         -- cpu activity monitor
-        , Run MultiCpu       [ "--template" , "Cpu: <total0>% <total1>% <total2>% <total3>%"
+        , Run MultiCpu       [ "--template" , "Cpu: <total>%"
                              , "--Low"      , "20"         -- units: %
                              , "--High"     , "80"         -- units: %
                              , "--low"      , "#78b753"
                              , "--normal"   , "#c0a25f"
                              , "--high"     , "#e85848"
-                             , "--minwidth" , "3"
+                             , "--minwidth" , "2"
                              ] 10
 
         -- cpu core temperature monitor
