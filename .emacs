@@ -19,9 +19,10 @@
  '(js2-strict-trailing-comma-warning nil)
  '(js2-strict-var-hides-function-arg-warning nil)
  '(js2-strict-var-redeclaration-warning nil)
+ '(linum-relative-current-symbol "")
  '(package-selected-packages
    (quote
-    (yaml-mode haskell-mode editorconfig web-beautify evil-magit magit-svn magit tidy php-mode auto-complete ac-js2 csharp-mode web-mode less-css-mode jade-mode evil js2-mode)))
+    (linum-relative yaml-mode haskell-mode editorconfig web-beautify evil-magit magit-svn magit tidy php-mode auto-complete ac-js2 csharp-mode web-mode less-css-mode jade-mode evil js2-mode)))
  '(safe-local-variable-values
    (quote
     ((web-mode-markup-indent-offset . 2)
@@ -77,6 +78,7 @@
         )))
 
 (global-linum-mode 1)
+(linum-relative-global-mode 1)
 (global-hl-line-mode t)
 (set-face-attribute hl-line-face nil :underline nil)
 (set-face-attribute hl-line-face nil :background "black")
