@@ -20,9 +20,37 @@
  '(js2-strict-var-hides-function-arg-warning nil)
  '(js2-strict-var-redeclaration-warning nil)
  '(linum-relative-current-symbol "")
+
  '(package-selected-packages
    (quote
-    (linum-relative yaml-mode haskell-mode editorconfig web-beautify evil-magit magit-svn magit tidy php-mode auto-complete ac-js2 csharp-mode web-mode less-css-mode jade-mode evil js2-mode)))
+    (
+     ac-js2
+     auto-complete
+     csharp-mode
+     dockerfile-mode
+     editorconfig
+     evil
+     evil-magit
+     haskell-mode
+     jade-mode
+     js2-mode
+     js3-mode
+     less-css-mode
+     linum-relative
+     magit
+     magit-svn
+     php-mode
+     purescript-mode
+     tide
+     tidy
+     web-beautify
+     web-mode
+     xo
+     yaml-mode
+     )
+    )
+   )
+
  '(safe-local-variable-values
    (quote
     ((web-mode-markup-indent-offset . 2)
@@ -154,3 +182,6 @@
 (desktop-save-mode 1)
 
 (add-hook 'haskell-mode-hook 'haskell-indentation-mode)
+
+(require 'flycheck-xo)
+(flycheck-xo-setup)
