@@ -199,3 +199,15 @@
 
 (require 'flycheck-xo)
 (flycheck-xo-setup)
+
+;; pretty symbols
+(add-hook 'js2-mode-hook 'prettify-symbols-mode)
+(add-hook 'js2-mode-hook
+          (lambda ()
+            (setq prettify-symbols-alist
+                  '(("function" . ?λ)
+                    ("<=" . ?≤)
+                    (">=" . ?≥)))))
+
+;; provides nothing
+
