@@ -26,6 +26,7 @@
     (
      ac-js2
      auto-complete
+     company-flow
      csharp-mode
      dockerfile-mode
      editorconfig
@@ -35,6 +36,10 @@
      jade-mode
      js2-mode
      js3-mode
+     flycheck-flow
+     haskell-mode
+     jade-mode
+     js2-mode
      less-css-mode
      linum-relative
      magit
@@ -46,6 +51,9 @@
      web-beautify
      web-mode
      xo
+     tidy
+     web-beautify
+     web-mode
      yaml-mode
      )
     )
