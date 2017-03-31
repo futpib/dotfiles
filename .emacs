@@ -146,6 +146,11 @@
             ;; install it separately via package-install
             (company-mode-on)))
 
+;; company in php-mode
+(add-hook 'php-mode-hook
+          (lambda ()
+            (company-mode-on)))
+
 ;; aligns annotation to the right hand side
 (setq company-tooltip-align-annotations t)
 
