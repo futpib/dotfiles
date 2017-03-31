@@ -163,7 +163,7 @@
 (setq company-tooltip-align-annotations t)
 
 (eval-after-load 'company
-  '(add-to-list 'company-backends 'company-tern))
+  '(add-to-list 'company-backends 'company-tern 'company-flow))
 
 (server-start)
 
