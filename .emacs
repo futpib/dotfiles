@@ -32,18 +32,16 @@
      editorconfig
      evil
      evil-magit
-     haskell-mode
-     jade-mode
-     js2-mode
-     js3-mode
      flycheck-flow
      haskell-mode
      jade-mode
      js2-mode
+     js3-mode
      less-css-mode
      linum-relative
      magit
      magit-svn
+     markdown-mode
      php-mode
      purescript-mode
      tide
@@ -51,9 +49,6 @@
      web-beautify
      web-mode
      xo
-     tidy
-     web-beautify
-     web-mode
      yaml-mode
      )
     )
