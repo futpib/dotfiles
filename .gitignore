@@ -1,6 +1,9 @@
 *
 !.gitignore
 !.emacs
+!.emacs.d/
+.emacs.d/*
+!.emacs.d/Cask
 !.bash_colors
 !.bash_preexec
 !.bashrc

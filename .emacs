@@ -1,7 +1,19 @@
+(require 'cl)
+
 (setq package-archives '(("gnu" . "http://elpa.gnu.org/packages/")
                          ("marmalade" . "https://marmalade-repo.org/packages/")
                          ("melpa" . "http://melpa.org/packages/")))
 (package-initialize)
+
+(custom-set-variables
+ '(package-selected-packages
+   '(pallet)))
+
+(if (not (every (lambda (p) (require p nil :noerror)) package-selected-packages))
+    (package-install-selected-packages))
+
+(require 'pallet)
+(pallet-mode t)
 
 (custom-set-variables
  ;; custom-set-variables was added by Custom.
@@ -20,40 +32,6 @@
  '(js2-strict-var-hides-function-arg-warning nil)
  '(js2-strict-var-redeclaration-warning nil)
  '(linum-relative-current-symbol "")
-
- '(package-selected-packages
-   (quote
-    (
-     ac-js2
-     auto-complete
-     company-flow
-     csharp-mode
-     dockerfile-mode
-     editorconfig
-     evil
-     evil-magit
-     flycheck-flow
-     haskell-mode
-     jade-mode
-     js2-mode
-     js3-mode
-     less-css-mode
-     linum-relative
-     magit
-     magit-svn
-     markdown-mode
-     php-mode
-     purescript-mode
-     tide
-     tidy
-     web-beautify
-     web-mode
-     xo
-     yaml-mode
-     )
-    )
-   )
-
  '(safe-local-variable-values
    (quote
     ((web-mode-markup-indent-offset . 2)
