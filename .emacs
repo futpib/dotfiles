@@ -90,6 +90,7 @@
 (global-linum-mode 1)
 (linum-relative-global-mode 1)
 (global-hl-line-mode t)
+(show-paren-mode 1)
 (set-face-attribute hl-line-face nil :underline nil)
 (set-face-attribute hl-line-face nil :background "black")
 (set-face-attribute hl-line-face nil :foreground nil)
