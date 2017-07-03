@@ -154,6 +154,9 @@
 ;; use eslint with modes for files
 (flycheck-add-mode 'javascript-eslint 'js2-mode)
 
+(require 'flycheck-flow)
+(flycheck-add-next-checker 'javascript-flow 'javascript-eslint)
+
 ;; customize flycheck temp file prefix
 (setq-default flycheck-temp-prefix ".flycheck")
 
