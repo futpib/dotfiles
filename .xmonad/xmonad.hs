@@ -153,4 +153,4 @@ keys' conf@(XConfig {XMonad.modMask = modMask}) = M.fromList $
         numberKeys = [xK_grave, xK_1, xK_2, xK_3, xK_4, xK_5, xK_6, xK_7, xK_8, xK_9, xK_0]
         altMask = mod1Mask
 
-spawnDmenu = spawn "dmenu_run -i -fn 'Terminus (TTF)::pixelsize=12' -nb '#302F2F'"
+spawnDmenu = spawn "dmenu_run -i -fn 'Hack' -nb '#302F2F'"
