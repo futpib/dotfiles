@@ -1,17 +1,13 @@
-(require 'cl)
 
 (setq package-archives '(("gnu" . "http://elpa.gnu.org/packages/")
                          ("marmalade" . "https://marmalade-repo.org/packages/")
                          ("melpa" . "http://melpa.org/packages/")))
 (package-initialize)
 
-(custom-set-variables
- '(package-selected-packages
-   '(pallet)))
+(require 'cl)
 
-(if (not (every (lambda (p) (require p nil :noerror)) package-selected-packages))
-    (package-install-selected-packages))
-
+(require 'cask)
+(cask-initialize)
 (require 'pallet)
 (pallet-mode t)
 
