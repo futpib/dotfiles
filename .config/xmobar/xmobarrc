@@ -4,7 +4,8 @@ Config {
 --      font =         "xft:Bitstream Vera Sans Mono:size=9:bold:antialias=true"
 --      font =         "xft:Oxygen Mono:size=10:regular:antialias=true"
 --     font =         "xft:Terminus:size=10:regular:antialias=true"
-     font =         "xft:Terminus (TTF):size=12:regular:antialias=true"
+--     font =         "xft:Terminus (TTF):size=12:regular:antialias=true"
+     font =         "xft:Hack::regular:antialias=true"
    , bgColor =      "#302f2f"
    , fgColor =      "#e0dedb"
    , position =     Top
