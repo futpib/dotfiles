@@ -17,3 +17,4 @@
 !.config/xmobar/xmobarrc
 .config/dunst/*
 !.config/dunst/dunstrc
+!.vimrc
