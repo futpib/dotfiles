@@ -44,7 +44,7 @@ main = do
         , normalBorderColor = "#5C5B5A"
         , focusedBorderColor = "#275EA0"
         , keys = keys'
-        , workspaces = map show [0..10]
+        , workspaces = [ "`" ] ++ (map show ([1..9] ++ [0])) ++ [ "-", "=", "⌫", "⇱" ]
         }
 
 
@@ -139,7 +139,7 @@ keys' conf@(XConfig {XMonad.modMask = modMask}) = M.fromList $
 
     [ ((m .|. modMask, k), windows $ f i)
     | (i, k) <- zip (XMonad.workspaces conf)
-        $ numberKeys
+        $ workspaceKeys
     , (f, m) <- [(W.greedyView, 0), (W.shift, shiftMask)]
     ]
 
@@ -147,10 +147,10 @@ keys' conf@(XConfig {XMonad.modMask = modMask}) = M.fromList $
     ++
 
     [ ((m .|. modMask .|. altMask, key), screenWorkspace sc >>= flip whenJust (windows . f))
-        | (key, sc) <- zip numberKeys [0..]
+        | (key, sc) <- zip workspaceKeys [0..]
         , (f, m) <- [(W.view, 0), (W.shift, shiftMask)]]
     where
-        numberKeys = [xK_grave, xK_1, xK_2, xK_3, xK_4, xK_5, xK_6, xK_7, xK_8, xK_9, xK_0]
+        workspaceKeys = [xK_grave, xK_1, xK_2, xK_3, xK_4, xK_5, xK_6, xK_7, xK_8, xK_9, xK_0, xK_minus, xK_equal, xK_BackSpace, xK_Home]
         altMask = mod1Mask
 
 spawnDmenu = spawn "dmenu_run -i -fn 'Hack' -nb '#302F2F'"
