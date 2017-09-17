@@ -81,7 +81,7 @@ Config {
 
         -- uptime
         , Run Uptime         [ "--template" , "Up: <days>d <hours>h <minutes>m"
-                             ] 10
+                             ] 60
 
         -- time and date indicator
         --   (%F = y-m-d date, %a = day of week, %T = h:m:s time)
