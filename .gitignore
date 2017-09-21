@@ -17,5 +17,6 @@
 !.config/xmobar/xmobarrc
 .config/dunst/*
 !.config/dunst/dunstrc
+!.config/compton.conf
 !.vimrc
 !.profile
