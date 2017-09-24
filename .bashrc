@@ -31,7 +31,7 @@ alias g='grep'
 # alias m='mpdc'
 
 # sudo autocomlite
-complete -cf s sudo kdesu man exec which whereis
+complete -cf s sudo kdesu man exec which whereis xargs
 
 source ~/.profile
 
