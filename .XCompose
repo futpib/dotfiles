@@ -1,0 +1,4 @@
+include "%L"
+
+<Multi_key> <P> <P>         : "Π"   U03A0    # GREEK CAPITAL LETTER PI
+<Multi_key> <p> <p>         : "π"   U03C0    # GREEK SMALL LETTER PI
