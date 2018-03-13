@@ -33,6 +33,10 @@
 .config/mpv/*
 !.config/mpv/mpv.conf
 
+!.config/i3
+.config/i3/*
+!.config/i3/config
+
 !.config/dunst
 .config/dunst/*
 !.config/dunst/dunstrc
