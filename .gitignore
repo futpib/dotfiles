@@ -15,6 +15,9 @@
 !.config/xmobar
 .config/xmobar/*
 !.config/xmobar/xmobarrc
+!.config/mpv
+.config/mpv/*
+!.config/mpv/mpv.conf
 .config/dunst/*
 !.config/dunst/dunstrc
 !.config/compton.conf
