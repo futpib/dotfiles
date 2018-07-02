@@ -39,6 +39,7 @@
  ;; If you edit it by hand, you could mess it up, so be careful.
  ;; Your init file should contain only one such instance.
  ;; If there is more than one, they won't work right.
+ '(cursor ((t (:background "white"))))
  '(ediff-even-diff-B ((t (:background "gray34"))))
  '(ediff-odd-diff-A ((t (:background "gray35"))))
  '(ediff-odd-diff-B ((t (:background "gray35"))))
