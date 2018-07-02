@@ -25,6 +25,7 @@
 (depends-on "flymake-jshint")
 (depends-on "flymake-json")
 (depends-on "git-commit")
+(depends-on "go-mode")
 (depends-on "goto-chg")
 (depends-on "haskell-mode")
 (depends-on "jade-mode")
