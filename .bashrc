@@ -15,6 +15,11 @@ then
     alias 1="sudo emerge --oneshot"
     alias r="sudo emerge -C"
     alias f='emerge --search'
+elif [ -f /usr/bin/yaourt ]
+then
+    alias i="yaourt -S"
+    alias r="yaourt -R"
+    alias f='yaourt -Ss'
 else
     alias i="sudo pacman -S"
     alias r="sudo pacman -R"
@@ -22,8 +27,8 @@ else
 fi
 alias p="ping google.com"
 alias s='sudo'
-alias d='sudo dolphin'
-alias k='sudo kate'
+#alias d='sudo dolphin'
+#alias k='sudo kate'
 alias n='sudo nano'
 alias v='sudo vim'
 alias g='grep'
