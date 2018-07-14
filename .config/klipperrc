@@ -1,0 +1,40 @@
+[Action_0]
+Automatic=false
+Description=reverse hex byte order
+Number of commands=1
+Regexp=
+
+[Action_0/Command_0]
+Commandline[$e]=echo '%s' | tac -rs ..
+Description=reverse hex byte order
+Enabled=true
+Icon=
+Output=2
+
+[Actions]
+EnableMagicMimeActions=false
+StripWhiteSpace=false
+
+[ActionsWidget]
+ColumnState=AAAA/wAAAAAAAAABAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA9EAAAACAQAAAQAAAAAAAAAAAAAAALX/////AAAAgQAAAAAAAAACAAABewAAAAEAAAAAAAACVgAAAAEAAAAAAAAD6AAAAABk
+
+[ConfigDialog]
+Height 1200=544
+Height 1271=545
+Height 2160=930
+Width 2133=607
+Width 2259=612
+Width 3840=1485
+
+[EditActionDialog]
+ColumnState=AAAA/wAAAAAAAAABAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAABMYAAAADAAEAAQAAAAAAAAAAAAAAALX/////AAAAAQAAAAAAAAADAAAA4wAAAAEAAAAAAAAAzQAAAAEAAAAAAAADFgAAAAEAAAAAAAAD6AAAAABk
+Height 1200=639
+Height 2160=704
+Width 2133=812
+Width 3840=1267
+
+[General]
+MaxClipItems=2048
+Number of Actions=1
+URLGrabberEnabled=true
+Version=5.13.1
