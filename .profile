@@ -1,7 +1,8 @@
+
 # https://github.com/xmonad/xmonad/issues/126
 export _JAVA_AWT_WM_NONREPARENTING=1
 
 export ANDROID_HOME=~/Android/Sdk/
 export ANDROID_NDK_HOME="$ANDROID_HOME/ndk-bundle"
 
-export PATH="$ANDROID_HOME/platform-tools/:$HOME/.local/bin/:$(yarn global bin --offline):$HOME/go/bin:$PATH"
+export PATH="$HOME/.cargo/bin:$ANDROID_HOME/platform-tools/:$HOME/.local/bin/:$(yarn global bin --offline):$HOME/go/bin:$PATH"
