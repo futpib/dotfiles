@@ -143,10 +143,15 @@ if echo "$-" | grep i > /dev/null; then
             important_vars="${important_vars}prefix: \"${WINEPREFIX/$HOME/~}\" "
         fi
 
+        local protocol=''
+        if [ -n "${SSH_TTY}" ]; then
+            protocol="${protocol}${Purple}ssh${Color_Off}${IBlack}://${Color_Off}"
+        fi
+
         spent="$(__displaytime $(( $(date '+%s') - __last_started )))"
 
         printf "${BWhite}${On_Red}↵${Color_Off}\n"
-        __hr "${IBlack}finished at [$(date '+%H:%M:%S')] (took $spent) [${Green}${USER}${IBlack}@$(hostname)${Color_Off} $(pwd | sed "s|$HOME|~|")${IBlack}] ${important_vars}"\
+        __hr "${IBlack}finished at [$(date '+%H:%M:%S')] (took $spent) [${protocol}${Green}${USER}${IBlack}@$(hostname)${Color_Off} $(pwd | sed "s|$HOME|~|")${IBlack}] ${important_vars}"\
             "${returned_full}"\
             "${returned_hr_color}"
 
