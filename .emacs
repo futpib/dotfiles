@@ -170,6 +170,7 @@
 (desktop-save-mode 1)
 
 (add-hook 'haskell-mode-hook 'haskell-indentation-mode)
+(add-hook 'haskell-mode-hook 'intero-mode)
 
 (require 'flycheck-xo)
 (flycheck-xo-setup)

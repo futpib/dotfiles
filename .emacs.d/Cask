@@ -28,6 +28,7 @@
 (depends-on "go-mode")
 (depends-on "goto-chg")
 (depends-on "haskell-mode")
+(depends-on "intero")
 (depends-on "jade-mode")
 (depends-on "js2-mode")
 (depends-on "js3-mode")
