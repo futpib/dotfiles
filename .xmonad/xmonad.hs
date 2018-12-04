@@ -9,6 +9,7 @@ import XMonad.Util.Themes
 import XMonad.Hooks.ManageDocks
 import XMonad.Hooks.DynamicLog
 import XMonad.Hooks.ManageHelpers
+import XMonad.Hooks.EwmhDesktops
 
 import XMonad.Layout.Accordion
 import XMonad.Layout.NoBorders
@@ -27,7 +28,7 @@ import XMonad.Actions.Submap
 
 main = do
     xmproc <- spawnPipe "xmobar"
-    xmonad $ defaultConfig
+    xmonad $ ewmh $ defaultConfig
         { modMask = mod4Mask -- use the Windows button as mod
         , manageHook = manageHook'
         , layoutHook = layoutHook'
