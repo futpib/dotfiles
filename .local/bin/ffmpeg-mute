@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+ffmpeg -i "$1" -vcodec copy -an "$(echo "$1" | sed -E -e 's/$/.muted/' -e 's/\.(\w+)\.(\w+)$/.\2.\1/')"
