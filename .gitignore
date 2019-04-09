@@ -25,6 +25,7 @@
 !.config/compton.conf
 !.config/klipperrc
 !.config/systemmonitorrc
+!.config/dolphinrc
 
 !.config/xmobar
 .config/xmobar/*

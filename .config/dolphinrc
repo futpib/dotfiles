@@ -1,0 +1,30 @@
+[CompactMode]
+FontWeight=50
+
+[DetailsMode]
+FontWeight=50
+PreviewSize=16
+
+[General]
+GlobalViewProps=true
+ViewPropsTimestamp=2019,4,9,17,1,54
+
+[IconsMode]
+FontWeight=50
+
+[MainWindow]
+Height 1080=1078
+MenuBar=Disabled
+State=AAAA/wAAAAD9AAAAAgAAAAAAAAC4AAAENvwCAAAAA/sAAAAWAGYAbwBsAGQAZQByAHMARABvAGMAawAAAAAA/////wAAAAoBAAAD+wAAABQAcABsAGEAYwBlAHMARABvAGMAawEAAAAAAAAB0gAAAFoBAAAD+wAAABAAaQBuAGYAbwBEAG8AYwBrAQAAAdMAAAJjAAABDAEAAAMAAAADAAAHWAAAAL78AQAAAAH7AAAAGAB0AGUAcgBtAGkAbgBhAGwARABvAGMAawAAAAAmAAAHWAAAAJEBAAADAAAGnwAABDYAAAAEAAAABAAAAAgAAAAI/AAAAAIAAAAAAAAAAQAAABYAbQBhAGkAbgBUAG8AbwBsAEIAYQByAwAAAAD/////AAAAAAAAAAAAAAACAAAAAA==
+ToolBarsMovable=Disabled
+Width 1920=1918
+
+[MainWindow][Toolbar mainToolBar]
+ToolButtonStyle=IconOnly
+
+[PreviewSettings]
+Plugins=appimagethumbnail,audiothumbnail,comicbookthumbnail,djvuthumbnail,exrthumbnail,directorythumbnail,fontthumbnail,imagethumbnail,jpegthumbnail,kraorathumbnail,windowsexethumbnail,windowsimagethumbnail,mltpreview,opendocumentthumbnail,svgthumbnail
+
+[SettingsDialog]
+Height 1080=664
+Width 1920=883
