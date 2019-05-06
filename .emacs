@@ -56,7 +56,7 @@
 (require 'editorconfig)
 (editorconfig-mode 1)
 
-(add-to-list 'auto-mode-alist '("\\.js\\'" . js2-mode))
+(add-to-list 'auto-mode-alist '("\\.js\\'" . rjsx-mode))
 
 (tool-bar-mode -1)
 (menu-bar-mode -1)
@@ -110,7 +110,16 @@
 (require 'company)
 (setq company-idle-delay 0)
 
-(add-hook 'js2-mode-hook
+(add-hook 'rjsx-mode-hook
+          (lambda ()
+            (company-mode-on)))
+
+(add-hook 'elixir-mode-hook
+          (lambda ()
+            (company-mode-on)
+            (alchemist-mode)))
+
+(add-hook 'css-mode-hook
           (lambda ()
             (company-mode-on)))
 
@@ -176,9 +185,17 @@
 (flycheck-xo-setup)
 
 ;; pretty symbols
-(add-hook 'js2-mode-hook 'prettify-symbols-mode)
-(add-hook 'js2-mode-hook
+(add-hook 'rjsx-mode-hook 'prettify-symbols-mode)
+(add-hook 'rjsx-mode-hook
           (lambda ()
+            (add-hook 'before-save-hook
+                      (lambda ()
+                        (if indent-tabs-mode
+                            (tabify (point-min) (point-max))
+                          (untabify (point-min) (point-max))
+                          ))
+                      nil
+                      t)
             (setq prettify-symbols-alist
                   '(("function" . ?λ)
                     ("<=" . ?≤)
