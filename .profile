@@ -6,3 +6,5 @@ export ANDROID_HOME=~/Android/Sdk/
 export ANDROID_NDK_HOME="$ANDROID_HOME/ndk-bundle"
 
 export PATH="$HOME/.cargo/bin:$ANDROID_HOME/platform-tools/:$HOME/.local/bin/:$(yarn global bin --offline):$HOME/go/bin:$PATH"
+
+export ERL_AFLAGS="-kernel shell_history enabled"
