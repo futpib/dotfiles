@@ -179,6 +179,3 @@ PS1="→ "
 PS2=" → "
 PS3="  → "
 PS4="   → "
-
-export NVM_DIR="/home/futpib/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"  # This loads nvm
