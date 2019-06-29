@@ -61,7 +61,7 @@ function preexec_invoke_cmd () {
 # environment to attempt to detect if the current command is being invoked
 # interactively, and invoke 'preexec' if so.
 function preexec_invoke_exec () {
-    if [[ -n "$COMP_LINE" ]]
+    if [[ -n "${COMP_LINE:+}" ]]
     then
         # We're in the middle of a completer.  This obviously can't be
         # an interactively issued command.
