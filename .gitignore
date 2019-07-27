@@ -43,3 +43,4 @@
 !.local/bin/
 .local/bin/*
 !.local/bin/ffmpeg-mute
+!.local/bin/chrome-headless
