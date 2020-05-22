@@ -139,6 +139,10 @@
           (lambda ()
             (company-mode-on)))
 
+(add-hook 'rust-mode-hook
+          (lambda ()
+            (company-mode-on)))
+
 ;; aligns annotation to the right hand side
 (setq company-tooltip-align-annotations t)
 
