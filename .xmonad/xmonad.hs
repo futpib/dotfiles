@@ -76,7 +76,8 @@ myTheme = (theme xmonadTheme) { decoHeight = 12 }
 keys' conf@(XConfig {XMonad.modMask = modMask}) = M.fromList $
 
     [ ((modMask,               xK_Return), spawn $ XMonad.terminal conf)
-    , ((modMask,               xK_F2    ), spawnDmenu)
+    , ((modMask,               xK_F2    ), spawnRunner)
+    , ((modMask,               xK_slash ), spawnSwitcher)
     , ((modMask,               xK_F4    ), kill)
 
     --layouts
@@ -154,4 +155,5 @@ keys' conf@(XConfig {XMonad.modMask = modMask}) = M.fromList $
         workspaceKeys = [xK_grave, xK_1, xK_2, xK_3, xK_4, xK_5, xK_6, xK_7, xK_8, xK_9, xK_0, xK_minus, xK_equal, xK_BackSpace, xK_Home]
         altMask = mod1Mask
 
-spawnDmenu = spawn "dmenu_run -i -fn 'Hack' -nb '#302F2F'"
+spawnRunner = spawn "rofi -show run"
+spawnSwitcher = spawn "rofi -show window"
