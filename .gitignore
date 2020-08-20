@@ -22,7 +22,7 @@
 !.config
 .config/*
 
-!.config/compton.conf
+!.config/picom.conf
 !.config/klipperrc
 !.config/systemmonitorrc
 !.config/dolphinrc
