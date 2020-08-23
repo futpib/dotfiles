@@ -31,8 +31,13 @@
 .config/mpv/*
 !.config/mpv/mpv.conf
 
+!.config/dunst
 .config/dunst/*
 !.config/dunst/dunstrc
+
+!.config/rofi
+.config/rofi/*
+!.config/rofi/config
 
 !.local/
 .local/*
