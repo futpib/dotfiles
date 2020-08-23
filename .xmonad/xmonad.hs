@@ -27,20 +27,11 @@ import XMonad.Actions.NoBorders
 import XMonad.Actions.Submap
 
 main = do
-    xmproc <- spawnPipe "xmobar"
     xmonad $ ewmh $ defaultConfig
         { modMask = mod4Mask -- use the Windows button as mod
         , manageHook = manageHook'
         , layoutHook = layoutHook'
 --         , handleEventHook = handleEventHook'
-        , logHook = dynamicLogWithPP xmobarPP
-            { ppOutput  = hPutStrLn xmproc
-            , ppTitle   = xmobarColor "#78b753" "" . shorten 40
-            , ppCurrent = xmobarColor "#c0a25f" "" . wrap "[" "]"
-            , ppVisible = wrap "(" ")"
-            , ppUrgent  = xmobarColor "red" "#e85848"
-            , ppSep     = " | "
-            }
         , terminal = "konsole"
         , normalBorderColor = "#5C5B5A"
         , focusedBorderColor = "#275EA0"

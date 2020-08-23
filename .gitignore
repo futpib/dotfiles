@@ -27,10 +27,6 @@
 !.config/systemmonitorrc
 !.config/dolphinrc
 
-!.config/xmobar
-.config/xmobar/*
-!.config/xmobar/xmobarrc
-
 !.config/mpv
 .config/mpv/*
 !.config/mpv/mpv.conf
