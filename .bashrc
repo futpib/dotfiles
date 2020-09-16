@@ -93,6 +93,24 @@ if echo "$-" | grep i > /dev/null; then
             "${Blue}"
     }
 
+    __print_part_in_brackets () {
+        local protocol=''
+        if [ -n "${SSH_TTY}" ]; then
+            protocol="${protocol}${Purple}ssh${Color_Off}${IBlack}://${Color_Off}"
+        fi
+
+        local git_root="$(git rev-parse --show-toplevel 2> /dev/null)"
+
+        local pwd="$(pwd)"
+        if [[ "${git_root}" != "" ]]
+        then
+            pwd="$(echo ${pwd} | sed "s|${git_root}|${UWhite_Escaped}\0${Color_Off_Escaped}|")"
+        fi
+        pwd="$(echo ${pwd} | sed "s|$HOME|~|")"
+
+        printf "${protocol}${Green}${USER}${IBlack}@$(uname -n)${Color_Off} ${pwd}${IBlack}"
+    }
+
     __precmd () {
         local returned=$?
         [[ $BASH_SUBSHELL -ne 0 ]] && return
@@ -124,25 +142,19 @@ if echo "$-" | grep i > /dev/null; then
             important_vars="${important_vars}netns: ${netns} "
         fi
 
-        local protocol=''
-        if [ -n "${SSH_TTY}" ]; then
-            protocol="${protocol}${Purple}ssh${Color_Off}${IBlack}://${Color_Off}"
-        fi
-
         spent="$(__displaytime $(( $(date '+%s') - __last_started )))"
 
         printf "${BWhite}${On_Red}↵${Color_Off}\n"
-        __hr "${IBlack}finished at [$(date '+%H:%M:%S')] (took $spent) [${protocol}${Green}${USER}${IBlack}@$(hostname)${Color_Off} $(pwd | sed "s|$HOME|~|")${IBlack}] ${important_vars}"\
+        __hr "${IBlack}finished at [$(date '+%H:%M:%S')] (took $spent) [$(__print_part_in_brackets)] ${important_vars}"\
             "${returned_full}"\
             "${returned_hr_color}"
-
     }
 
 
     PROMPT_COMMAND="__precmd"
     preexec_install
 
-    __hr "${IBlack}[$(date '+%H:%M:%S')] [${Green}${USER}${IBlack}@$(hostname)${Color_Off} $(pwd | sed "s|$HOME|~|")${IBlack}] "\
+    __hr "${IBlack}[$(date '+%H:%M:%S')] [$(__print_part_in_brackets)] "\
         "${IBlack} bash $BASH_VERSION "\
         "${IBlack}"
 
