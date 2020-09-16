@@ -15,11 +15,6 @@ then
     alias 1="sudo emerge --oneshot"
     alias r="sudo emerge -C"
     alias f='emerge --search'
-elif [ -f /usr/bin/yaourt ]
-then
-    alias i="yaourt -S"
-    alias r="yaourt -R"
-    alias f='yaourt -Ss'
 else
     alias i="sudo pacman -S"
     alias r="sudo pacman -R"
@@ -27,15 +22,11 @@ else
 fi
 alias p="ping google.com"
 alias s='sudo'
-#alias d='sudo dolphin'
-#alias k='sudo kate'
 alias n='sudo nano'
 alias v='sudo vim'
 alias g='grep'
 
-# alias m='mpdc'
-
-# sudo autocomlite
+# sudo autocomlete
 complete -cf s sudo kdesu man exec which whereis xargs
 
 source ~/.profile
@@ -44,20 +35,6 @@ source ~/.profile
 if echo "$-" | grep i > /dev/null; then
     source ~/.bash_colors
     source ~/.bash_preexec
-    
-    mul () {
-        local mpc="$(construct-mpc-cmdline)"
-        if echo $@ | grep -qx '\-f'; then
-            $mpc -f '%file%' current
-        else
-            $mpc -f '%title% — %album% — %artist%' current
-        fi
-        $mpc -f '%genre%' current
-        
-        local supersets=($(mpdc collections find C | tail -n +3))
-        echo -e "${White}    in:${Color_Off}" "${BWhite}${supersets[@]}${Color_Off}"
-        echo -e "${White}not in:${Color_Off}" $( mpdc collections ls | grep -vxf <(printf "%s\n" "${supersets[@]}") )
-    }
 
     # PS stuff
     __replicate () {
@@ -80,7 +57,7 @@ if echo "$-" | grep i > /dev/null; then
     __hr () { # __hr left_text right_text line_color
     #     printf "$1"'%*s\n' "$(($(tput cols) - ${#1}))" "$2" | sed 's/ /—/g';
     # 1 for text at left
-    # 2 for text at ringt
+    # 2 for text at right
     # 3 for setting line color
     #     printf "$3\r"
     #     printf "%*s\r" "$(tput cols)" "${Color_Off}${2}" | sed 'y/ _/— /'
