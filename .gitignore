@@ -43,6 +43,12 @@
 .config/rofi/*
 !.config/rofi/config
 
+!.config/fontconfig
+.config/fontconfig/*
+!.config/fontconfig/conf.d
+.config/fontconfig/conf.d/*
+!.config/fontconfig/conf.d/50-default-fonts.conf
+
 !.local/
 .local/*
 !.local/bin/
