@@ -60,6 +60,12 @@
 .config/systemd/user/plasma-workspace.target.wants/*
 !.config/systemd/user/plasma-workspace.target.wants/plasma-xmonad.service
 
+!.config/fontconfig
+.config/fontconfig/*
+!.config/fontconfig/conf.d
+.config/fontconfig/conf.d/*
+!.config/fontconfig/conf.d/50-default-fonts.conf
+
 !.local/
 .local/*
 !.local/bin/
