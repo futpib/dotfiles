@@ -18,7 +18,8 @@
  ;; If there is more than one, they won't work right.
  '(ansi-color-faces-vector
    [default default default italic underline success warning error])
- '(custom-enabled-themes (quote (wombat)))
+ '(custom-enabled-themes '(wombat))
+ '(evil-undo-system 'undo-tree)
  '(js2-mode-show-parse-errors nil)
  '(js2-mode-show-strict-warnings nil)
  '(js2-strict-cond-assign-warning nil)
@@ -105,7 +106,7 @@
 (add-to-list 'auto-mode-alist '("\\.djhtml\\'" . web-mode))
 (add-to-list 'auto-mode-alist '("\\.html?\\'" . web-mode))
 
-(setq backup-directory-alist `(("." . "~/.emacs-saves")))
+(setq backup-directory-alist `(("." . "~/.emacs.d/backup")))
 
 (require 'company)
 (setq company-idle-delay 0)
