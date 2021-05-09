@@ -15,6 +15,8 @@
 !.bash_preexec
 !.bashrc
 
+!.looking-glass-client.ini
+
 !.xmonad/
 .xmonad/*
 !.xmonad/xmonad.hs
