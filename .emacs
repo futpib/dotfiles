@@ -4,12 +4,33 @@
                          ("melpa" . "http://melpa.org/packages/")))
 (package-initialize)
 
-(require 'cl)
 
+(require 'cl)
 (require 'cask)
 (cask-initialize)
 (require 'pallet)
 (pallet-mode t)
+(require 'evil)
+(require 'editorconfig)
+(require 'company)
+(require 'flycheck)
+(require 'flycheck-flow)
+(require 'flycheck-xo)
+(require 'web-mode)
+
+(add-to-list 'auto-mode-alist '("\\.php\\'" . web-mode))
+(add-to-list 'auto-mode-alist '("\\.phtml\\'" . web-mode))
+(add-to-list 'auto-mode-alist '("\\.tpl\\.php\\'" . web-mode))
+(add-to-list 'auto-mode-alist '("\\.[agj]sp\\'" . web-mode))
+(add-to-list 'auto-mode-alist '("\\.as[cp]x\\'" . web-mode))
+(add-to-list 'auto-mode-alist '("\\.erb\\'" . web-mode))
+(add-to-list 'auto-mode-alist '("\\.mustache\\'" . web-mode))
+(add-to-list 'auto-mode-alist '("\\.djhtml\\'" . web-mode))
+(add-to-list 'auto-mode-alist '("\\.html?\\'" . web-mode))
+(add-to-list 'auto-mode-alist '("\\.tsx\\'" . web-mode))
+(add-to-list 'auto-mode-alist '("\\.ts\\'" . typescript-mode))
+(add-to-list 'auto-mode-alist '("\\.jsx?\\'" . rjsx-mode))
+
 
 (custom-set-variables
  ;; custom-set-variables was added by Custom.
@@ -30,10 +51,9 @@
  '(js2-strict-var-redeclaration-warning nil)
  '(linum-relative-current-symbol "")
  '(safe-local-variable-values
-   (quote
-    ((web-mode-markup-indent-offset . 2)
+   '((web-mode-markup-indent-offset . 2)
      (nxml-child-indent . 2)
-     (nxml-child-indent . 4))))
+     (nxml-child-indent . 4)))
  '(show-trailing-whitespace t))
 (custom-set-faces
  ;; custom-set-faces was added by Custom.
@@ -50,14 +70,11 @@
  '(smerge-refined-added ((t (:inherit smerge-refined-change :background "#446644"))))
  '(whitespace-newline ((t (:foreground "dim gray" :weight normal)))))
 
-(require 'evil)
 (evil-mode 1)
 
 (add-to-list 'load-path "~/.emacs.d/lisp")
-(require 'editorconfig)
-(editorconfig-mode 1)
 
-(add-to-list 'auto-mode-alist '("\\.js\\'" . rjsx-mode))
+(editorconfig-mode 1)
 
 (tool-bar-mode -1)
 (menu-bar-mode -1)
@@ -95,20 +112,8 @@
 
 (setq web-mode-enable-current-element-highlight t)
 
-(require 'web-mode)
-(add-to-list 'auto-mode-alist '("\\.php\\'" . web-mode))
-(add-to-list 'auto-mode-alist '("\\.phtml\\'" . web-mode))
-(add-to-list 'auto-mode-alist '("\\.tpl\\.php\\'" . web-mode))
-(add-to-list 'auto-mode-alist '("\\.[agj]sp\\'" . web-mode))
-(add-to-list 'auto-mode-alist '("\\.as[cp]x\\'" . web-mode))
-(add-to-list 'auto-mode-alist '("\\.erb\\'" . web-mode))
-(add-to-list 'auto-mode-alist '("\\.mustache\\'" . web-mode))
-(add-to-list 'auto-mode-alist '("\\.djhtml\\'" . web-mode))
-(add-to-list 'auto-mode-alist '("\\.html?\\'" . web-mode))
-
 (setq backup-directory-alist `(("." . "~/.emacs.d/backup")))
 
-(require 'company)
 (setq company-idle-delay 0)
 
 (add-hook 'rjsx-mode-hook
@@ -124,16 +129,24 @@
           (lambda ()
             (company-mode-on)))
 
-;; tide
-(add-hook 'typescript-mode-hook
+
+(defun setup-tide-mode ()
+  (tide-setup)
+  (flycheck-mode +1)
+  (setq flycheck-check-syntax-automatically '(save mode-enabled))
+  (eldoc-mode +1)
+  ;; company is an optional dependency. You have to
+  ;; install it separately via package-install
+  (company-mode-on))
+
+(add-hook 'web-mode-hook
           (lambda ()
-            (tide-setup)
-            (flycheck-mode +1)
-            (setq flycheck-check-syntax-automatically '(save mode-enabled))
-            (eldoc-mode +1)
-            ;; company is an optional dependency. You have to
-            ;; install it separately via package-install
-            (company-mode-on)))
+            (when (string-equal "tsx" (file-name-extension buffer-file-name))
+              (setup-tide-mode))))
+;; enable typescript-tslint checker
+(flycheck-add-mode 'typescript-tslint 'web-mode)
+;; tide
+(add-hook 'typescript-mode-hook 'setup-tide-mode)
 
 ;; company in php-mode
 (add-hook 'php-mode-hook
@@ -154,10 +167,6 @@
 
 (setq mouse-autoselect-window t)
 
-;; flycheck
-;; http://www.flycheck.org/manual/latest/index.html
-(require 'flycheck)
-
 ;; turn on flychecking globally
 (add-hook 'after-init-hook #'global-flycheck-mode)
 
@@ -169,8 +178,20 @@
 ;; use eslint with modes for files
 (flycheck-add-mode 'javascript-eslint 'js2-mode)
 
-(require 'flycheck-flow)
 (flycheck-add-next-checker 'javascript-flow 'javascript-eslint)
+
+;; use local eslint from node_modules before global
+;; http://emacs.stackexchange.com/questions/21205/flycheck-with-file-relative-eslint-executable
+(defun my/use-eslint-from-node-modules ()
+  (let* ((root (locate-dominating-file
+                (or (buffer-file-name) default-directory)
+                "node_modules"))
+         (eslint (and root
+                      (expand-file-name "node_modules/.bin/eslint"
+                                        root))))
+    (when (and eslint (file-executable-p eslint))
+      (setq-local flycheck-javascript-eslint-executable eslint))))
+(add-hook 'flycheck-mode-hook #'my/use-eslint-from-node-modules)
 
 ;; customize flycheck temp file prefix
 (setq-default flycheck-temp-prefix ".flycheck")
@@ -186,8 +207,20 @@
 (add-hook 'haskell-mode-hook 'haskell-indentation-mode)
 (add-hook 'haskell-mode-hook 'intero-mode)
 
-(require 'flycheck-xo)
 (flycheck-xo-setup)
+
+;; use local xo from node_modules before global
+;; http://emacs.stackexchange.com/questions/21205/flycheck-with-file-relative-xo-executable
+(defun my/use-xo-from-node-modules ()
+  (let* ((root (locate-dominating-file
+                (or (buffer-file-name) default-directory)
+                "node_modules"))
+         (xo (and root
+                      (expand-file-name "node_modules/.bin/xo"
+                                        root))))
+    (when (and xo (file-executable-p xo))
+      (setq-local flycheck-xo-executable xo))))
+(add-hook 'flycheck-mode-hook #'my/use-xo-from-node-modules)
 
 ;; pretty symbols
 (add-hook 'rjsx-mode-hook 'prettify-symbols-mode)
@@ -205,6 +238,9 @@
                   '(("function" . ?λ)
                     ("<=" . ?≤)
                     (">=" . ?≥)))))
+
+(setq create-lockfiles nil)
+(global-undo-tree-mode)
 
 ;; provides nothing
 
