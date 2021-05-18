@@ -2,7 +2,6 @@
 (setq package-archives '(("gnu" . "http://elpa.gnu.org/packages/")
                          ("marmalade" . "https://marmalade-repo.org/packages/")
                          ("melpa" . "http://melpa.org/packages/")))
-(package-initialize)
 
 
 (require 'cl)
@@ -179,6 +178,7 @@
 (flycheck-add-mode 'javascript-eslint 'js2-mode)
 
 (flycheck-add-next-checker 'javascript-flow 'javascript-eslint)
+(flycheck-add-next-checker 'typescript-tide 'javascript-eslint)
 
 ;; use local eslint from node_modules before global
 ;; http://emacs.stackexchange.com/questions/21205/flycheck-with-file-relative-eslint-executable
