@@ -101,7 +101,7 @@ if echo "$-" | grep i > /dev/null; then
 
         local git_root="$(git rev-parse --show-toplevel 2> /dev/null)"
 
-        local pwd="$(pwd)"
+        local pwd="$PWD"
         if [[ "${git_root}" != "" ]]
         then
             pwd="$(echo ${pwd} | sed "s|${git_root}|${UWhite_Escaped}\0${Color_Off_Escaped}|")"
@@ -109,6 +109,14 @@ if echo "$-" | grep i > /dev/null; then
         pwd="$(echo ${pwd} | sed "s|$HOME|~|")"
 
         printf "${protocol}${Green}${USER}${IBlack}@$(uname -n)${Color_Off} ${pwd}${IBlack}"
+    }
+
+    __nvm_use_last_pwd=""
+    __nvm_use () {
+        if [[ "$PWD" != "$__nvm_use_last_pwd" && -f ".nvmrc" ]]; then
+            __nvm_use_last_pwd="$PWD"
+            nvm use
+        fi
     }
 
     __precmd () {
@@ -144,15 +152,18 @@ if echo "$-" | grep i > /dev/null; then
 
         spent="$(__displaytime $(( $(date '+%s') - __last_started )))"
 
+        __nvm_use
+
         printf "${BWhite}${On_Red}↵${Color_Off}\n"
         __hr "${IBlack}finished at [$(date '+%H:%M:%S')] (took $spent) [$(__print_part_in_brackets)] ${important_vars}"\
             "${returned_full}"\
             "${returned_hr_color}"
     }
 
-
     PROMPT_COMMAND="__precmd"
     preexec_install
+
+    __nvm_use
 
     __hr "${IBlack}[$(date '+%H:%M:%S')] [$(__print_part_in_brackets)] "\
         "${IBlack} bash $BASH_VERSION "\
