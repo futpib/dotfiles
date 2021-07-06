@@ -136,7 +136,8 @@
   (eldoc-mode +1)
   ;; company is an optional dependency. You have to
   ;; install it separately via package-install
-  (company-mode-on))
+  (company-mode-on)
+  (flycheck-add-next-checker 'typescript-tide 'javascript-eslint))
 
 (add-hook 'web-mode-hook
           (lambda ()
@@ -178,7 +179,6 @@
 (flycheck-add-mode 'javascript-eslint 'js2-mode)
 
 (flycheck-add-next-checker 'javascript-flow 'javascript-eslint)
-(flycheck-add-next-checker 'typescript-tide 'javascript-eslint)
 
 ;; use local eslint from node_modules before global
 ;; http://emacs.stackexchange.com/questions/21205/flycheck-with-file-relative-eslint-executable
@@ -223,7 +223,14 @@
 (add-hook 'flycheck-mode-hook #'my/use-xo-from-node-modules)
 
 ;; pretty symbols
-(add-hook 'rjsx-mode-hook 'prettify-symbols-mode)
+(defun my/prettify-symbols-mode ()
+  (prettify-symbols-mode)
+  (setq prettify-symbols-alist
+        '(("function" . ?λ)
+          ("<=" . ?≤)
+          (">=" . ?≥))))
+
+(add-hook 'typescript-mode-hook 'my/prettify-symbols-mode)
 (add-hook 'rjsx-mode-hook
           (lambda ()
             (add-hook 'before-save-hook
@@ -234,10 +241,7 @@
                           ))
                       nil
                       t)
-            (setq prettify-symbols-alist
-                  '(("function" . ?λ)
-                    ("<=" . ?≤)
-                    (">=" . ?≥)))))
+            (my/prettify-symbols-mode)))
 
 (setq create-lockfiles nil)
 (global-undo-tree-mode)
