@@ -50,7 +50,7 @@ manageHook' = composeAll . concat $
   where myClassFloats = []
         myTitleFloats = []
 
-layoutHook' = smartBorders
+layoutHook' = lessBorders OtherIndicated
     $ mkToggle (FULL ?? EOT)
     $ windowNavigation
 --     $ subTabbed'
