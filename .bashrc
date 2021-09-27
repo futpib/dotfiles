@@ -20,11 +20,8 @@ else
     alias r="sudo pacman -R"
     alias f='pacman -Ss'
 fi
-alias p="ping google.com"
 alias s='sudo'
-alias n='sudo nano'
 alias v='sudo vim'
-alias g='grep'
 
 # sudo autocomlete
 complete -cf s sudo kdesu man exec which whereis xargs
