@@ -48,7 +48,6 @@
  '(js2-strict-trailing-comma-warning nil)
  '(js2-strict-var-hides-function-arg-warning nil)
  '(js2-strict-var-redeclaration-warning nil)
- '(linum-relative-current-symbol "")
  '(safe-local-variable-values
    '((web-mode-markup-indent-offset . 2)
      (nxml-child-indent . 2)
@@ -101,8 +100,8 @@
         trailing
         )))
 
-(global-linum-mode 1)
-(linum-relative-global-mode 1)
+(global-display-line-numbers-mode)
+(setq display-line-numbers-type 'relative)
 (global-hl-line-mode t)
 (show-paren-mode 1)
 (set-face-attribute hl-line-face nil :underline nil)

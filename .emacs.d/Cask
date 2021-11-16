@@ -36,7 +36,6 @@
 (depends-on "js2-mode")
 (depends-on "js3-mode")
 (depends-on "let-alist" "1.0.1")
-(depends-on "linum-relative")
 (depends-on "magit")
 (depends-on "magit-popup")
 (depends-on "magit-svn")
