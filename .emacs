@@ -217,9 +217,20 @@
   (let* ((root (locate-dominating-file
                 (or (buffer-file-name) default-directory)
                 "node_modules"))
-         (xo (and root
-                      (expand-file-name "node_modules/.bin/xo"
-                                        root))))
+         (root2 (locate-dominating-file
+                 (file-name-directory
+                  (directory-file-name
+                   (or root (buffer-file-name) default-directory)))
+                 "node_modules"))
+         (xo (car (remove-if-not
+                   (lambda (x) (and x (file-exists-p x)))
+                   (list
+                    (and root
+                         (expand-file-name "node_modules/.bin/xo"
+                                           root))
+                    (and root2
+                         (expand-file-name "node_modules/.bin/xo"
+                                           root2)))))))
     (when (and xo (file-executable-p xo))
       (setq-local flycheck-xo-executable xo))))
 (add-hook 'flycheck-mode-hook #'my/use-xo-from-node-modules)
