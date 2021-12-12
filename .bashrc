@@ -142,6 +142,9 @@ if echo "$-" | grep i > /dev/null; then
         if [ -n "${WINEPREFIX}" ]; then
             important_vars="${important_vars}prefix: \"${WINEPREFIX/$HOME/~}\" "
         fi
+        if [ -n "${DOCKER_CONTEXT}" ]; then
+            important_vars="${important_vars}context: ${DOCKER_CONTEXT} "
+        fi
         local netns="$(ip netns identify)"
         if [ -n "${netns}" ]; then
             important_vars="${important_vars}netns: ${netns} "
