@@ -141,10 +141,15 @@
   (company-mode-on)
   (flycheck-add-next-checker 'typescript-tide 'javascript-eslint))
 
+(add-hook 'racket-mode-hook
+          (lambda ()
+            (company-mode-on)))
+
 (add-hook 'web-mode-hook
           (lambda ()
             (when (string-equal "tsx" (file-name-extension buffer-file-name))
               (setup-tide-mode))))
+
 ;; enable typescript-tslint checker
 (flycheck-add-mode 'typescript-tslint 'web-mode)
 ;; tide
@@ -158,6 +163,9 @@
 (add-hook 'rust-mode-hook
           (lambda ()
             (company-mode-on)))
+
+(setq lsp-headerline-breadcrumb-enable nil)
+(add-hook 'kotlin-mode-hook 'lsp)
 
 ;; aligns annotation to the right hand side
 (setq company-tooltip-align-annotations t)
@@ -257,7 +265,17 @@
             (my/prettify-symbols-mode)))
 
 (setq create-lockfiles nil)
+
+(add-hook 'racket-mode-hook 'prettify-symbols-mode)
+(add-hook 'racket-mode-hook
+          (lambda ()
+            (setq prettify-symbols-alist
+                  '(("lambda" . ?λ)))))
+
+(setq create-lockfiles nil)
+
 (global-undo-tree-mode)
+(evil-set-undo-system 'undo-tree)
 
 ;; provides nothing
 
