@@ -47,6 +47,7 @@
 .local/bin/*
 !.local/bin/ffmpeg-mute
 !.local/bin/chrome-headless
+!.local/bin/emacsclient-wrapper
 
 !.local/share/
 .local/share/*

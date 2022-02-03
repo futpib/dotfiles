@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+
+filename_argument="$1"
+line_column_argument=""
+
+if [[ "$filename_argument" =~ ^[^:]+:[0-9]+:[0-9]+$ ]]; then
+    line_column_argument="$(echo "$filename_argument" | cut -d : -f 2-3)"
+    filename_argument="$(echo "$filename_argument" | cut -d : -f 1)"
+fi
+
+if [[ -z "$line_column_arguments" ]]; then
+    emacsclient -n "$filename_argument"
+else
+    emacsclient -c "$line_column_argument" -n "$filename_argument"
+fi
