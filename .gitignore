@@ -47,3 +47,9 @@
 .local/bin/*
 !.local/bin/ffmpeg-mute
 !.local/bin/chrome-headless
+
+!.local/share/
+.local/share/*
+!.local/share/konsole/
+.local/share/konsole/*
+!.local/share/konsole/scrollback-unlimited.profile
