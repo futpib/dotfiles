@@ -54,3 +54,7 @@
 !.local/share/konsole/
 .local/share/konsole/*
 !.local/share/konsole/scrollback-unlimited.profile
+
+!.local/share/applications/
+.local/share/applications/*
+!.local/share/applications/emacsclient-wrapper.desktop
