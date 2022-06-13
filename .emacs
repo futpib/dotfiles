@@ -6,7 +6,7 @@
 
 (require 'cl)
 (require 'cask)
-(cask-initialize)
+(cask--initialize)
 (require 'pallet)
 (pallet-mode t)
 (require 'evil)
