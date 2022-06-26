@@ -45,6 +45,13 @@
 .config/rofi/*
 !.config/rofi/config.rasi
 
+!.config/systemd
+.config/systemd/*
+!.config/systemd/user
+.config/systemd/user/*
+!.config/systemd/user/plasma-xmonad.service
+!.config/systemd/user/plasma-kwin_x11.service
+
 !.local/
 .local/*
 !.local/bin/
