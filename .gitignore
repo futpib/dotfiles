@@ -51,6 +51,9 @@
 .config/systemd/user/*
 !.config/systemd/user/plasma-xmonad.service
 !.config/systemd/user/plasma-kwin_x11.service
+!.config/systemd/user/plasma-workspace.target.wants
+.config/systemd/user/plasma-workspace.target.wants/*
+!.config/systemd/user/plasma-workspace.target.wants/plasma-xmonad.service
 
 !.local/
 .local/*
