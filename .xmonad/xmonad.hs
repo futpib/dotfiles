@@ -69,6 +69,9 @@ keys' conf@(XConfig {XMonad.modMask = modMask}) = M.fromList $
     [ ((modMask,               xK_Return), spawn $ XMonad.terminal conf)
     , ((modMask,               xK_F2    ), spawnRunner)
     , ((modMask,               xK_slash ), spawnSwitcher)
+    , ((modMask,               xK_Escape), spawnDunstctl "close")
+    , ((modMask .|. controlMask, xK_Escape), spawnDunstctl "close-all")
+    , ((modMask .|. shiftMask, xK_Escape), spawnDunstctl "history-pop")
     , ((modMask,               xK_F4    ), kill)
 
     --layouts
@@ -148,3 +151,6 @@ keys' conf@(XConfig {XMonad.modMask = modMask}) = M.fromList $
 
 spawnRunner = spawn "rofi -show run"
 spawnSwitcher = spawn "rofi -show window"
+
+spawnDunstctl :: String -> X ()
+spawnDunstctl s = spawn $ "dunstctl " ++ s
