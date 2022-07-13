@@ -27,7 +27,7 @@ import XMonad.Actions.NoBorders
 import XMonad.Actions.Submap
 
 main = do
-    xmonad $ ewmh $ defaultConfig
+    xmonad $ ewmh $ def
         { modMask = mod4Mask -- use the Windows button as mod
         , manageHook = manageHook'
         , layoutHook = layoutHook'
@@ -57,7 +57,7 @@ layoutHook' = lessBorders Screen
     $ avoidStruts
     $ boringWindows
     $ layoutHook
-    $ defaultConfig
+    $ def
 -- layoutHook' = noBorders Full ||| Accordion
 
 -- subTabbed' x = addTabs shrinkText myTheme $ subLayout [] Simplest x
