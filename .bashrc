@@ -4,7 +4,7 @@ HISTCONTROL=ignoreboth
 HISTSIZE=10000
 SAVEHIST=10000
 
-export GREP_COLOR='1;33'
+export GREP_COLORS='mt=1;33'
 
 alias ls='ls --color=auto'
 alias grep='grep --color=auto'
