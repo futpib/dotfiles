@@ -40,6 +40,7 @@
    [default default default italic underline success warning error])
  '(custom-enabled-themes '(wombat))
  '(evil-undo-system 'undo-tree)
+ '(flycheck-javascript-flow-args nil)
  '(js2-mode-show-parse-errors nil)
  '(js2-mode-show-strict-warnings nil)
  '(js2-strict-cond-assign-warning nil)
@@ -52,7 +53,11 @@
    '((web-mode-markup-indent-offset . 2)
      (nxml-child-indent . 2)
      (nxml-child-indent . 4)))
- '(show-trailing-whitespace t))
+ '(show-trailing-whitespace t)
+ '(undo-tree-history-directory-alist '(("." . "~/.emacs.d/undo-tree")))
+ '(undo-tree-visualizer-diff t)
+ '(undo-tree-visualizer-relative-timestamps nil)
+ '(undo-tree-visualizer-timestamps t))
 (custom-set-faces
  ;; custom-set-faces was added by Custom.
  ;; If you edit it by hand, you could mess it up, so be careful.
