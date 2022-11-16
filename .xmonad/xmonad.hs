@@ -72,6 +72,7 @@ keys' conf@(XConfig {XMonad.modMask = modMask}) = M.fromList $
     , ((modMask,               xK_Escape), spawnDunstctl "close")
     , ((modMask .|. controlMask, xK_Escape), spawnDunstctl "close-all")
     , ((modMask .|. shiftMask, xK_Escape), spawnDunstctl "history-pop")
+    , ((modMask .|. altMask, xK_Escape), spawnDunstctl "set-paused toggle")
     , ((modMask,               xK_F4    ), kill)
 
     --layouts
