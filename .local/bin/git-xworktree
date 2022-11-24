@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+
+set -e
+
+command="$1"
+
+command_path() {
+    index="$1"
+
+    if [ -z "${index}" ]; then
+        index="0"
+    fi
+
+    suffix=".${index}"
+    suffix="${suffix/%.0/}"
+    toplevel="$(git rev-parse --show-toplevel)"
+    toplevel_without_index="${toplevel/%.*/}"
+    target_toplevel="${toplevel_without_index}${suffix}"
+
+    if [ -d "${target_toplevel}" ]; then
+        echo "${target_toplevel}"
+    else
+        echo "${toplevel}"
+        exit 1
+    fi
+}
+
+command_default() {
+    echo default
+    echo "$@"
+    exit 1
+}
+
+main() {
+    case "$command" in
+        "path")
+            command_path "${@:2}"
+            ;;
+
+        *)
+            command_default "${@:1}"
+            ;;
+    esac
+}
+
+main "$@"
