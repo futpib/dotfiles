@@ -1,0 +1,41 @@
+#!/usr/bin/env -S deno run --allow-env --allow-read --allow-net=translate.googleapis.com --allow-run=xclip,notify-send
+
+import { execa } from 'npm:execa@^6.1.0';
+import { GTR } from "https://deno.land/x/gtr/mod.ts";
+
+const gtr = new GTR();
+
+async function main() {
+    const { stdout: clipboard } = await execa('xclip', [ '-o' ]);
+
+    const { stdout: notificationId } = await execa('notify-send', [
+        '--print-id',
+        '--app-name',
+        'translate-clipboard',
+        'Translating...',
+        clipboard,
+    ]);
+
+    const [
+        { trans: ru },
+        { trans: en },
+    ] = await Promise.all(['ru', 'en'].map(targetLang => gtr.translate(
+        clipboard,
+        { targetLang },
+    )));
+
+    await execa('notify-send', [
+        '--replace-id',
+        notificationId, 
+        '--app-name',
+        'translate-clipboard',
+        'Done',
+        [
+            en,
+            ru,
+            clipboard,
+        ].join('\n\n'),
+    ]);
+}
+
+main();

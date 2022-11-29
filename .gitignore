@@ -63,6 +63,7 @@
 !.local/bin/chrome-headless
 !.local/bin/emacsclient-wrapper
 !.local/bin/git-xworktree
+!.local/bin/translate-clipboard
 
 !.local/share/
 .local/share/*
