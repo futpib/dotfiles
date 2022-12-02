@@ -11,6 +11,20 @@ elif [[ "$filename_argument" =~ ^[^:]+:[0-9]+:in$ ]]; then
     filename_argument="$(echo "$filename_argument" | cut -d : -f 1)"
 fi
 
+if ! [ -f "$filename_argument" ]; then
+    readarray -t found_filenames < <(find . -path '*'"$filename_argument")
+    if [ "${#found_filenames[@]}" -eq 0 ]; then
+        echo No such file
+        exit 1;
+    elif [ "${#found_filenames[@]}" -eq 1 ]; then
+        filename_argument="$found_filenames"
+    else
+        echo Multiple files found:
+        echo "${found_filenames[*]}" | xargs -n 1 echo
+        exit 1;
+    fi
+fi
+
 if [[ -z "$line_column_arguments" ]]; then
     emacsclient -n "$filename_argument"
 else
