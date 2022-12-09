@@ -41,6 +41,12 @@
  '(custom-enabled-themes '(wombat))
  '(evil-undo-system 'undo-tree)
  '(flycheck-javascript-flow-args nil)
+ '(glyphless-char-display-control
+   '((c0-control . acronym)
+     (c1-control . acronym)
+     (format-control . acronym)
+     (variation-selectors . acronym)
+     (no-font . acronym)))
  '(js2-mode-show-parse-errors nil)
  '(js2-mode-show-strict-warnings nil)
  '(js2-strict-cond-assign-warning nil)
@@ -57,7 +63,8 @@
  '(undo-tree-history-directory-alist '(("." . "~/.emacs.d/undo-tree")))
  '(undo-tree-visualizer-diff t)
  '(undo-tree-visualizer-relative-timestamps nil)
- '(undo-tree-visualizer-timestamps t))
+ '(undo-tree-visualizer-timestamps t)
+ '(web-mode-auto-quote-style nil))
 (custom-set-faces
  ;; custom-set-faces was added by Custom.
  ;; If you edit it by hand, you could mess it up, so be careful.
