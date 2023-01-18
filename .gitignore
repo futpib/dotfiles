@@ -69,6 +69,7 @@
 !.local/bin/emacsclient-wrapper
 !.local/bin/git-xworktree
 !.local/bin/translate-clipboard
+!.local/bin/remove-wine-file-associations
 
 !.local/share/
 .local/share/*
