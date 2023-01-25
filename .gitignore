@@ -67,9 +67,8 @@
 !.local/bin/ffmpeg-mute
 !.local/bin/chrome-headless
 !.local/bin/emacsclient-wrapper
-!.local/bin/git-xworktree
 !.local/bin/translate-clipboard
-!.local/bin/remove-wine-file-associations
+!.local/bin/remove-wine-file-association
 
 !.local/share/
 .local/share/*
