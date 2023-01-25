@@ -73,6 +73,7 @@ keys' conf@(XConfig {XMonad.modMask = modMask}) = M.fromList $
     , ((modMask .|. controlMask, xK_Escape), spawnDunstctl "close-all")
     , ((modMask .|. shiftMask, xK_Escape), spawnDunstctl "history-pop")
     , ((modMask .|. altMask,   xK_Escape), spawnDunstctl "set-paused toggle")
+    , ((modMask,               xK_Print ), spawnXdotool "key XF86Ungrab")
     , ((modMask,               xK_t     ), spawnTranslateClipboard)
     , ((modMask,               xK_F4    ), kill)
 
@@ -157,4 +158,8 @@ spawnSwitcher = spawn "rofi -show window"
 spawnDunstctl :: String -> X ()
 spawnDunstctl s = spawn $ "dunstctl " ++ s
 
+spawnXdotool :: String -> X ()
+spawnXdotool s = spawn $ "xdotool " ++ s
+
+spawnTranslateClipboard :: X ()
 spawnTranslateClipboard = spawn "translate-clipboard"
