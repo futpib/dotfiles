@@ -9,7 +9,12 @@
 !.emacs
 !.emacs.d/
 .emacs.d/*
-!.emacs.d/Cask
+!.emacs.d/early-init.el
+!.emacs.d/straight/
+.emacs.d/straight/*
+!.emacs.d/straight/versions/
+.emacs.d/straight/versions/*
+!.emacs.d/straight/versions/default.el
 
 !.bash_colors
 !.bash_preexec
