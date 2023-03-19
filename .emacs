@@ -96,6 +96,8 @@
 (straight-use-package 'with-editor)
 (straight-use-package 'yaml-mode)
 (straight-use-package 'swift-mode)
+(straight-use-package
+ '(copilot :type git :host github :repo "zerolfx/copilot.el" :files ("dist" "*.el")))
 
 (require 'cl)
 (require 'evil)
@@ -273,6 +275,16 @@
 
 (eval-after-load 'company
   '(add-to-list 'company-backends 'company-tern 'company-flow))
+
+(with-eval-after-load 'company
+  ;; disable inline previews
+  (delq 'company-preview-if-just-one-frontend company-frontends))
+
+(with-eval-after-load 'copilot
+  (evil-define-key 'insert copilot-mode-map
+    (kbd "<tab>") 'copilot-accept-completion
+    (kbd "C-<iso-lefttab>") 'copilot-previous-completion
+    (kbd "C-<tab>") 'copilot-next-completion))
 
 (server-start)
 
