@@ -235,6 +235,7 @@
 
 
 (defun setup-tide-mode ()
+  "Setup tide mode."
   (tide-setup)
   (flycheck-mode +1)
   (setq flycheck-check-syntax-automatically '(save mode-enabled))
@@ -280,9 +281,17 @@
   ;; disable inline previews
   (delq 'company-preview-if-just-one-frontend company-frontends))
 
+(add-hook 'prog-mode-hook 'copilot-mode)
+
+(defun my/copilot-company-accept-or-indent-or-complete ()
+  "Accept copilot or company completion, or indent if no completion is available."
+  (interactive)
+  (or (copilot-accept-completion)
+      (company-indent-or-complete-common nil)))
+
 (with-eval-after-load 'copilot
   (evil-define-key 'insert copilot-mode-map
-    (kbd "<tab>") 'copilot-accept-completion
+    (kbd "<tab>") 'my/copilot-company-accept-or-indent-or-complete
     (kbd "C-<iso-lefttab>") 'copilot-previous-completion
     (kbd "C-<tab>") 'copilot-next-completion))
 
@@ -303,9 +312,9 @@
 
 (flycheck-add-next-checker 'javascript-flow 'javascript-eslint)
 
-;; use local eslint from node_modules before global
 ;; http://emacs.stackexchange.com/questions/21205/flycheck-with-file-relative-eslint-executable
 (defun my/use-eslint-from-node-modules ()
+  "Use local eslint from node_modules before global."
   (let* ((root (locate-dominating-file
                 (or (buffer-file-name) default-directory)
                 "node_modules"))
@@ -358,6 +367,7 @@
 
 ;; pretty symbols
 (defun my/prettify-symbols-mode ()
+  "Enable prettify symbols mode."
   (prettify-symbols-mode)
   (setq prettify-symbols-alist
         '(("function" . ?λ)
