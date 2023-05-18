@@ -1,0 +1,56 @@
+#!/usr/bin/env -S deno run --ext ts --allow-env --allow-read
+
+import fs from 'node:fs/promises';
+import * as semver from "https://deno.land/x/semver/mod.ts";
+
+async function fileExists(path: string) {
+    let stats: fs.Stats;
+
+    try {
+        stats = await fs.stat(path);
+    } catch (e) {
+        if (e.code === 'ENOENT') {
+            return false;
+        }
+        throw e;
+    }
+
+    return stats.isFile();
+}
+
+async function readPackageJsonNodeVersion() {
+    const packageJsonString = await fs.readFile('package.json', 'utf-8');
+    const packageJson: {
+        engines?: {
+            node?: string;
+        };
+    } = JSON.parse(packageJsonString);
+    const nodeVersion = packageJson.engines?.node;
+
+    if (!nodeVersion) {
+        return undefined;
+    }
+
+    for (let majorVersion = 1; majorVersion <= 1024; majorVersion++) {
+        if (semver.satisfies(`${majorVersion}.99999.99999`, nodeVersion)) {
+            return majorVersion;
+        }
+    }
+
+    return undefined;
+}
+
+async function main() {
+    let version = undefined;
+
+    const nvmrcExists = await fileExists('.nvmrc');
+    const packageJsonExists = await fileExists('package.json');
+
+    if (!nvmrcExists && packageJsonExists) {
+        version = await readPackageJsonNodeVersion();
+    }
+
+    console.log(version ?? '');
+}
+
+main();

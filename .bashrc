@@ -110,9 +110,14 @@ if echo "$-" | grep i > /dev/null; then
 
     __nvm_use_last_pwd=""
     __nvm_use () {
-        if [[ "$PWD" != "$__nvm_use_last_pwd" && -f ".nvmrc" ]]; then
+        if [[ "$PWD" != "$__nvm_use_last_pwd" && ( -f ".nvmrc" || -f "package.json" ) ]]; then
             __nvm_use_last_pwd="$PWD"
-            nvm use
+            local package_json_version="$(nvm-package-json-node-version)"
+            if [[ "${package_json_version}" != "" ]]; then
+                nvm use "${package_json_version}"
+            elif [[ -f ".nvmrc" ]]; then
+                nvm use
+            fi
         fi
     }
 
