@@ -20,6 +20,7 @@
 (straight-use-package 'cmake-mode)
 (straight-use-package 'company)
 (straight-use-package 'company-flow)
+(straight-use-package 'company-box)
 (straight-use-package 'csharp-mode)
 (straight-use-package 'dash)
 (straight-use-package 'dockerfile-mode)
@@ -70,6 +71,7 @@
 (straight-use-package 'protobuf-mode)
 (straight-use-package 'purescript-mode)
 (straight-use-package 'racket-mode)
+(straight-use-package 'rg)
 (straight-use-package 'rainbow-mode)
 (straight-use-package 'rjsx-mode)
 (straight-use-package 'rust-mode)
@@ -98,6 +100,8 @@
 (straight-use-package 'swift-mode)
 (straight-use-package
  '(copilot :type git :host github :repo "zerolfx/copilot.el" :files ("dist" "*.el")))
+(straight-use-package
+ '(prisma-mode :type git :host github :repo "pimeys/emacs-prisma-mode"))
 
 (require 'cl)
 (require 'evil)
@@ -107,6 +111,7 @@
 (require 'flycheck-flow)
 (require 'flycheck-xo)
 (require 'web-mode)
+(require 'company-box)
 
 (add-to-list 'auto-mode-alist '("\\.php\\'" . web-mode))
 (add-to-list 'auto-mode-alist '("\\.phtml\\'" . web-mode))
@@ -233,6 +238,7 @@
           (lambda ()
             (company-mode-on)))
 
+(add-hook 'company-mode-hook 'company-box-mode)
 
 (defun setup-tide-mode ()
   "Setup tide mode."
@@ -294,6 +300,18 @@
     (kbd "<tab>") 'my/copilot-company-accept-or-indent-or-complete
     (kbd "C-<iso-lefttab>") 'copilot-previous-completion
     (kbd "C-<tab>") 'copilot-next-completion))
+
+(with-eval-after-load 'rg
+  (advice-add 'wgrep-change-to-wgrep-mode :after
+          #'evil-normal-state)
+  (advice-add 'wgrep-to-original-mode :after
+          #'evil-motion-state)
+  (defvar rg-mode-map)
+  (add-to-list 'evil-motion-state-modes 'rg-mode)
+  (evil-add-hjkl-bindings rg-mode-map 'motion
+    "e" #'wgrep-change-to-wgrep-mode
+    "g" #'rg-recompile
+    "t" #'rg-rerun-change-literal))
 
 (server-start)
 
