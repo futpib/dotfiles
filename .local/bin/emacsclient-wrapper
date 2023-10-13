@@ -1,37 +1,60 @@
-#!/usr/bin/env bash
+#!/usr/bin/env -S deno run --allow-env --allow-read --allow-run=emacsclient
 
-filepath_argument="$1"
-line_column_argument=""
+import { execa } from 'npm:execa@^6.1.0';
+import { globby } from 'npm:globby@^13.2.2';
 
-if [[ "$filepath_argument" =~ ^[^:]+:[0-9]+:[0-9]+$ ]]; then
-    line_column_argument="$(echo "$filepath_argument" | cut -d : -f 2-3)"
-    filepath_argument="$(echo "$filepath_argument" | cut -d : -f 1)"
-elif [[ "$filepath_argument" =~ ^[^:]+:[0-9]+:in$ ]]; then
-    line_column_argument="$(echo "$filepath_argument" | cut -d : -f 2)"
-    filepath_argument="$(echo "$filepath_argument" | cut -d : -f 1)"
-fi
+async function main(query) {
+    if (!query) {
+        console.log('No filename provided');
+        Deno.exit(1);
+    }
 
-if ! [ -f "$filepath_argument" ]; then
-    filepath_without_prefix="${filepath_argument/[ab]\//}"
-    if [ -f "$filepath_without_prefix" ]; then
-        filepath_argument="$filepath_without_prefix"
-    else
-        readarray -t found_filepaths < <(find . -path '*'"$filepath_argument")
-        if [ "${#found_filepaths[@]}" -eq 0 ]; then
-            echo No such file
-            exit 1;
-        elif [ "${#found_filepaths[@]}" -eq 1 ]; then
-            filepath_argument="$found_filepaths"
-        else
-            echo Multiple files found:
-            echo "${found_filepaths[*]}" | xargs -n 1 echo
-            exit 1;
-        fi
-    fi
-fi
+    try {
+        const url = new URL(query);
+        query = url.pathname;
+    } catch (error) {
+        // ignore
+    }
 
-if [[ -z "$line_column_arguments" ]]; then
-    emacsclient -n "$filepath_argument"
-else
-    emacsclient -c "$line_column_argument" -n "$filepath_argument"
-fi
+    while (query) {
+        console.log('Searching for', query);
+
+        try {
+            await Deno.stat(query);
+
+            await execa('emacsclient', ['-n', query], {
+                stdio: 'inherit',
+            });
+
+            return;
+        } catch (error) {
+            // ignore
+        }
+
+        const files = await globby([ '**', query ].join('/'));
+
+        if (files.length === 0) {
+            console.log('No such file');
+            query = query.split('/').slice(1).join('/');
+            continue;
+        }
+
+        if (files.length > 1) {
+            console.log('Multiple files found:');
+            console.log(files.join('\n'));
+            Deno.exit(1);
+        }
+
+        const file = files[0];
+
+        await execa('emacsclient', ['-n', file], {
+            stdio: 'inherit',
+        });
+
+        return;
+    }
+
+    Deno.exit(1);
+}
+
+main(Deno.args[0]);
