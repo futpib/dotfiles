@@ -3,39 +3,58 @@
 import { execa } from 'npm:execa@^6.1.0';
 import { globby } from 'npm:globby@^13.2.2';
 
-async function main(query) {
-    if (!query) {
-        console.log('No filename provided');
-        Deno.exit(1);
-    }
-
+async function fileExists(path) {
     try {
-        const url = new URL(query);
-        query = url.pathname;
+        await Deno.stat(path);
+        return true;
+    } catch (error) {
+        return false;
+    }
+}
+
+function * expandQuery(originalQuery) {
+    try {
+        const url = new URL(originalQuery);
+        originalQuery = url.pathname;
     } catch (error) {
         // ignore
     }
 
+    let query = originalQuery.split(':')[0];
+
+    if (query !== originalQuery) {
+        yield * expandQuery(query);
+    }
+
+    query = originalQuery;
+
     while (query) {
+        yield query;
+        query = query.split('/').slice(1).join('/');
+    }
+}
+
+async function main(originalQuery) {
+    if (!originalQuery) {
+        console.log('No filename provided');
+        Deno.exit(1);
+    }
+
+    for (const query of expandQuery(originalQuery)) {
         console.log('Searching for', query);
 
-        try {
-            await Deno.stat(query);
-
+        if (await fileExists(query)) {
             await execa('emacsclient', ['-n', query], {
                 stdio: 'inherit',
             });
 
             return;
-        } catch (error) {
-            // ignore
         }
 
         const files = await globby([ '**', query ].join('/'));
 
         if (files.length === 0) {
             console.log('No such file');
-            query = query.split('/').slice(1).join('/');
             continue;
         }
 
