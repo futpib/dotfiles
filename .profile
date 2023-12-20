@@ -1,4 +1,6 @@
 
+export RIPGREP_CONFIG_PATH=~/.ripgreprc
+
 # https://github.com/xmonad/xmonad/issues/126
 export _JAVA_AWT_WM_NONREPARENTING=1
 
