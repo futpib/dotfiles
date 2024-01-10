@@ -17,3 +17,5 @@ export ERL_AFLAGS="-kernel shell_history enabled"
 
 export NVM_DIR="$(realpath ~/.nvm)"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"  # This loads nvm
+
+which rbenv 2>&1 > /dev/null && eval "$(rbenv init - bash)"
