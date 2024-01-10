@@ -1,4 +1,5 @@
 @theme "/usr/share/rofi/themes/BreezeDark.rasi"
 configuration {
     dpi: 168;
+    terminal: "konsole";
 }
