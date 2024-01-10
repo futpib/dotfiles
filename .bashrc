@@ -28,6 +28,11 @@ complete -cf s sudo kdesu man exec which whereis xargs
 
 source ~/.profile
 
+source-env () {
+    set -o allexport
+    source "$1"
+    set +o allexport
+}
 
 if echo "$-" | grep i > /dev/null; then
     source ~/.bash_colors
