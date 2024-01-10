@@ -5,6 +5,7 @@
 !.profile
 !.xprofile
 !.XCompose
+!.ripgreprc
 
 !.emacs
 !.emacs.d/
