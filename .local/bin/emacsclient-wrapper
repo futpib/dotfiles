@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --allow-env --allow-read --allow-run=emacsclient
+#!/usr/bin/env -S deno run --allow-env --allow-sys --allow-read --allow-run=emacsclient
 
 import { execa } from 'npm:execa@^6.1.0';
 import { globby } from 'npm:globby@^13.2.2';
