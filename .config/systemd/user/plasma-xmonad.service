@@ -9,3 +9,4 @@ Before=plasma-workspace.target
 ExecStart=/usr/bin/xmonad
 Slice=session.slice
 Restart=on-failure
+OOMPolicy=continue
