@@ -6,6 +6,7 @@ Description=Plasma XMonad Window Manager
 Before=plasma-workspace.target
 
 [Service]
+ExecStartPre=/usr/bin/xmonad --recompile
 ExecStart=/usr/bin/xmonad
 Slice=session.slice
 Restart=on-failure
