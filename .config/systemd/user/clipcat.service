@@ -1,0 +1,12 @@
+[Install]
+WantedBy=plasma-workspace.target
+
+[Unit]
+Description=Plasma clipcatd
+Before=plasma-workspace.target
+
+[Service]
+ExecStart=/usr/bin/clipcatd --no-daemon --replace
+Slice=session.slice
+Restart=on-failure
+OOMPolicy=continue

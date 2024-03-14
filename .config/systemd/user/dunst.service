@@ -1,0 +1,13 @@
+[Install]
+WantedBy=plasma-workspace.target
+
+[Unit]
+Description=Dunst notification daemon
+Documentation=man:dunst(1)
+PartOf=graphical-session.target
+Before=plasma-workspace.target
+
+[Service]
+Type=dbus
+BusName=org.freedesktop.Notifications
+ExecStart=/usr/bin/dunst
