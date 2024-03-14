@@ -31,7 +31,6 @@
 .config/*
 
 !.config/picom.conf
-!.config/klipperrc
 !.config/systemmonitorrc
 !.config/dolphinrc
 
@@ -50,6 +49,16 @@
 !.config/rofi
 .config/rofi/*
 !.config/rofi/config.rasi
+
+!.config/clipcat
+.config/clipcat/*
+!.config/clipcat/clipcatd.toml
+!.config/clipcat/clipcatctl.toml
+!.config/clipcat/clipcat-menu.toml
+
+!.config/htop
+.config/htop/*
+!.config/htop/htoprc
 
 !.config/systemd
 .config/systemd/*
