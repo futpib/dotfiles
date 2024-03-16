@@ -1,6 +1,6 @@
 daemonize = true
 pid_file = "/run/user/1000/clipcatd.pid"
-max_history = 50
+max_history = 10240
 synchronize_selection_with_clipboard = true
 history_file_path = "/home/futpib/.cache/clipcat/clipcatd-history"
 snippets = []
@@ -41,4 +41,4 @@ port = 45047
 enable = true
 icon = "accessories-clipboard"
 timeout_ms = 2000
-long_plaintext_length = 2000
+long_plaintext_length = 0
