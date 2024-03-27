@@ -1,0 +1,4 @@
+hide_kernel_threads=1
+hide_userland_threads=1
+screen:Main=PID USER PRIORITY NICE OOM M_VIRT M_RESIDENT M_SHARE STATE PERCENT_CPU PERCENT_MEM TIME Command
+.sort_key=PERCENT_CPU

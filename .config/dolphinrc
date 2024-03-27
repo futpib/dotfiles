@@ -7,7 +7,9 @@ PreviewSize=16
 
 [General]
 GlobalViewProps=true
-ViewPropsTimestamp=2019,4,9,17,1,54
+RememberOpenedTabs=false
+Version=202
+ViewPropsTimestamp=2023,9,4,1,30,37.09
 
 [IconsMode]
 FontWeight=50

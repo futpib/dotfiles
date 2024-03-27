@@ -5,6 +5,7 @@
 !.profile
 !.xprofile
 !.XCompose
+!.ripgreprc
 
 !.emacs
 !.emacs.d/
@@ -30,7 +31,6 @@
 .config/*
 
 !.config/picom.conf
-!.config/klipperrc
 !.config/systemmonitorrc
 !.config/dolphinrc
 
@@ -50,6 +50,16 @@
 .config/rofi/*
 !.config/rofi/config.rasi
 
+!.config/clipcat
+.config/clipcat/*
+!.config/clipcat/clipcatd.toml
+!.config/clipcat/clipcatctl.toml
+!.config/clipcat/clipcat-menu.toml
+
+!.config/htop
+.config/htop/*
+!.config/htop/htoprc
+
 !.config/systemd
 .config/systemd/*
 !.config/systemd/user
@@ -59,6 +69,14 @@
 !.config/systemd/user/plasma-workspace.target.wants
 .config/systemd/user/plasma-workspace.target.wants/*
 !.config/systemd/user/plasma-workspace.target.wants/plasma-xmonad.service
+!.config/systemd/user/clipcat.service
+!.config/systemd/user/dunst.service
+
+!.config/fontconfig
+.config/fontconfig/*
+!.config/fontconfig/conf.d
+.config/fontconfig/conf.d/*
+!.config/fontconfig/conf.d/50-default-fonts.conf
 
 !.local/
 .local/*
