@@ -160,7 +160,8 @@
  '(undo-tree-visualizer-diff t)
  '(undo-tree-visualizer-relative-timestamps nil)
  '(undo-tree-visualizer-timestamps t)
- '(web-mode-auto-quote-style nil))
+ '(web-mode-auto-quote-style nil)
+ '(x-select-enable-clipboard-manager nil))
 (custom-set-faces
  ;; custom-set-faces was added by Custom.
  ;; If you edit it by hand, you could mess it up, so be careful.
