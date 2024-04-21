@@ -30,7 +30,7 @@ source ~/.profile
 
 source-env () {
     set -o allexport
-    source "$1"
+    source "$1" || return 1
     set +o allexport
 }
 
