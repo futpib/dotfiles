@@ -151,6 +151,7 @@
  '(js2-strict-trailing-comma-warning nil)
  '(js2-strict-var-hides-function-arg-warning nil)
  '(js2-strict-var-redeclaration-warning nil)
+ '(ring-bell-function 'ignore)
  '(safe-local-variable-values
    '((web-mode-markup-indent-offset . 2)
      (nxml-child-indent . 2)
@@ -160,6 +161,7 @@
  '(undo-tree-visualizer-diff t)
  '(undo-tree-visualizer-relative-timestamps nil)
  '(undo-tree-visualizer-timestamps t)
+ '(visible-bell nil)
  '(web-mode-auto-quote-style nil)
  '(x-select-enable-clipboard-manager nil))
 (custom-set-faces
