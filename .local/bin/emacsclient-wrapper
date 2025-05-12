@@ -34,19 +34,46 @@ function * expandQuery(originalQuery) {
     }
 }
 
+function isValidLineNumber(lineNumber) {
+    return Number.isSafeInteger(lineNumber) && lineNumber > 0;
+}
+
+function getLineNumberFromQuery(query) {
+    const parts = query.split(':').slice(1);
+    return (
+        parts
+            .map(part => Number.parseInt(part, 10))
+            .find((part) => isValidLineNumber(part))
+    );
+}
+
+async function openFileInEmacs(file, lineNumber) {
+    const arguments_ = [
+        ...(Number.isSafeInteger(lineNumber) ? [ '+' + lineNumber ] : []),
+        '--no-wait',
+        file,
+    ];
+
+    console.error('+', 'emacsclient', ...arguments_);
+
+    await execa('emacsclient', arguments_, {
+        stdio: 'inherit',
+    });
+}
+
 async function main(originalQuery) {
     if (!originalQuery) {
         console.log('No filename provided');
         Deno.exit(1);
     }
 
+    const lineNumber = getLineNumberFromQuery(originalQuery);
+
     for (const query of expandQuery(originalQuery)) {
         console.log('Searching for', query);
 
         if (await fileExists(query)) {
-            await execa('emacsclient', ['-n', query], {
-                stdio: 'inherit',
-            });
+            await openFileInEmacs(query, lineNumber);
 
             return;
         }
@@ -66,9 +93,7 @@ async function main(originalQuery) {
 
         const file = files[0];
 
-        await execa('emacsclient', ['-n', file], {
-            stdio: 'inherit',
-        });
+        await openFileInEmacs(query, lineNumber);
 
         return;
     }
