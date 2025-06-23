@@ -103,7 +103,7 @@
 (straight-use-package
  '(prisma-mode :type git :host github :repo "pimeys/emacs-prisma-mode"))
 
-(require 'cl)
+(require 'cl-lib)
 (require 'evil)
 (require 'editorconfig)
 (require 'company)
@@ -125,6 +125,8 @@
 (add-to-list 'auto-mode-alist '("\\.tsx\\'" . web-mode))
 (add-to-list 'auto-mode-alist '("\\.ts\\'" . typescript-mode))
 (add-to-list 'auto-mode-alist '("\\.jsx?\\'" . rjsx-mode))
+(add-to-list 'auto-mode-alist '("\\.cjs\\'" . js2-mode))
+(add-to-list 'auto-mode-alist '("\\.mjs\\'" . js2-mode))
 
 
 (custom-set-variables
@@ -138,10 +140,8 @@
  '(evil-undo-system 'undo-tree)
  '(flycheck-javascript-flow-args nil)
  '(glyphless-char-display-control
-   '((c0-control . acronym)
-     (c1-control . acronym)
-     (format-control . acronym)
-     (variation-selectors . acronym)
+   '((c0-control . acronym) (c1-control . acronym)
+     (format-control . acronym) (variation-selectors . acronym)
      (no-font . acronym)))
  '(js2-mode-show-parse-errors nil)
  '(js2-mode-show-strict-warnings nil)
@@ -153,8 +153,7 @@
  '(js2-strict-var-redeclaration-warning nil)
  '(ring-bell-function 'ignore)
  '(safe-local-variable-values
-   '((web-mode-markup-indent-offset . 2)
-     (nxml-child-indent . 2)
+   '((web-mode-markup-indent-offset . 2) (nxml-child-indent . 2)
      (nxml-child-indent . 4)))
  '(show-trailing-whitespace t)
  '(undo-tree-history-directory-alist '(("." . "~/.emacs.d/undo-tree")))
@@ -169,6 +168,7 @@
  ;; If you edit it by hand, you could mess it up, so be careful.
  ;; Your init file should contain only one such instance.
  ;; If there is more than one, they won't work right.
+ '(default ((t (:inherit nil :extend nil :stipple nil :background "#242424" :foreground "#f6f3e8" :inverse-video nil :box nil :strike-through nil :overline nil :underline nil :slant normal :weight regular :height 100 :width normal :foundry "UKWN" :family "Hack"))))
  '(cursor ((t (:background "white"))))
  '(ediff-even-diff-B ((t (:background "gray34"))))
  '(ediff-odd-diff-A ((t (:background "gray35"))))
@@ -334,17 +334,19 @@
 (flycheck-add-next-checker 'javascript-flow 'javascript-eslint)
 
 ;; http://emacs.stackexchange.com/questions/21205/flycheck-with-file-relative-eslint-executable
-(defun my/use-eslint-from-node-modules ()
-  "Use local eslint from node_modules before global."
-  (let* ((root (locate-dominating-file
-                (or (buffer-file-name) default-directory)
-                "node_modules"))
-         (eslint (and root
-                      (expand-file-name "node_modules/.bin/eslint"
-                                        root))))
-    (when (and eslint (file-executable-p eslint))
-      (setq-local flycheck-javascript-eslint-executable eslint))))
-(add-hook 'flycheck-mode-hook #'my/use-eslint-from-node-modules)
+;; (defun my/use-eslint-from-node-modules ()
+;;   "Use local eslint from node_modules before global."
+;;   (let* ((root (locate-dominating-file
+;;                 (or (buffer-file-name) default-directory)
+;;                 "node_modules"))
+;;          (eslint (and root
+;;                       (expand-file-name "node_modules/.bin/eslint"
+;;                                         root))))
+;;     (when (and eslint (file-executable-p eslint))
+;;       (setq-local flycheck-javascript-eslint-executable eslint))))
+;; (add-hook 'flycheck-mode-hook #'my/use-eslint-from-node-modules)
+
+(setq flycheck-javascript-eslint-executable "eslint_d")
 
 ;; customize flycheck temp file prefix
 (setq-default flycheck-temp-prefix ".flycheck")
@@ -358,7 +360,6 @@
 (desktop-save-mode 1)
 
 (add-hook 'haskell-mode-hook 'haskell-indentation-mode)
-(add-hook 'haskell-mode-hook 'intero-mode)
 
 (flycheck-xo-setup)
 
@@ -373,7 +374,7 @@
                   (directory-file-name
                    (or root (buffer-file-name) default-directory)))
                  "node_modules"))
-         (xo (car (remove-if-not
+         (xo (car (cl-remove-if-not
                    (lambda (x) (and x (file-exists-p x)))
                    (list
                     (and root
@@ -384,6 +385,7 @@
                                            root2)))))))
     (when (and xo (file-executable-p xo))
       (setq-local flycheck-xo-executable xo))))
+
 (add-hook 'flycheck-mode-hook #'my/use-xo-from-node-modules)
 
 ;; pretty symbols
@@ -416,7 +418,10 @@
             (setq prettify-symbols-alist
                   '(("lambda" . ?λ)))))
 
-(setq create-lockfiles nil)
+(add-to-list 'interpreter-mode-alist
+             '("deno" . js2-mode))
+(add-to-list 'interpreter-mode-alist
+             '("(-S)? deno run.+" . js2-mode))
 
 (global-undo-tree-mode)
 (evil-set-undo-system 'undo-tree)
