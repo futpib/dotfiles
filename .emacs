@@ -40,7 +40,6 @@
 (straight-use-package 'flymake-easy)
 (straight-use-package 'flymake-jshint)
 (straight-use-package 'flymake-json)
-(straight-use-package 'git-commit)
 (straight-use-package 'go-mode)
 (straight-use-package 'goto-chg)
 (straight-use-package 'gradle-mode)
@@ -98,8 +97,9 @@
 (straight-use-package 'with-editor)
 (straight-use-package 'yaml-mode)
 (straight-use-package 'swift-mode)
+(straight-use-package 'copilot)
 (straight-use-package
- '(copilot :type git :host github :repo "zerolfx/copilot.el" :files ("dist" "*.el")))
+ '(copilot-chat :host github :repo "chep/copilot-chat.el" :files ("*.el")))
 (straight-use-package
  '(prisma-mode :type git :host github :repo "pimeys/emacs-prisma-mode"))
 

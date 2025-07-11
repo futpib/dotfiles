@@ -1,0 +1,26 @@
+#!/usr/bin/env -S deno run --allow-env --allow-sys --allow-read --allow-run=pkexec,notify-send,kill
+
+import { execa } from 'npm:execa@^9.6.0';
+
+async function main() {
+    const journalctlProcess = execa('pkexec', [
+        'journalctl',
+        '--follow',
+        '--identifier=kernel',
+        '--output=json',
+    ]);
+
+    for await (const line of journalctlProcess) {
+        const data = JSON.parse(line);
+
+        if (data.MESSAGE.startsWith('Out of memory:')) {
+            await execa('notify-send', [
+                '--app-name',
+                'journal-to-notifications',
+                data.MESSAGE,
+            ]);
+        }
+    }
+}
+
+main();
