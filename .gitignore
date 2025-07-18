@@ -90,6 +90,7 @@
 !.local/bin/translate-clipboard
 !.local/bin/remove-wine-file-association
 !.local/bin/nvm-package-json-node-version
+!.local/bin/claude-hook-pre-tool-use
 
 !.local/share/
 .local/share/*
