@@ -64,6 +64,8 @@
 !.config/claudex/CLAUDE.md.d/01-memory-management.md
 !.config/claudex/CLAUDE.md.d/02-git-workflow.md
 !.config/claudex/CLAUDE.md.d/03-cli-best-practices.md
+!.config/claudex/CLAUDE.md.d/04-code-exploration.md
+!.config/claudex/CLAUDE.md.d/05-rust-development.md
 
 !.config/htop
 .config/htop/*
