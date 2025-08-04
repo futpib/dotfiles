@@ -57,6 +57,17 @@
 !.config/clipcat/clipcatctl.toml
 !.config/clipcat/clipcat-menu.toml
 
+!.config/claudex
+.config/claudex/*
+!.config/claudex/CLAUDE.md.d
+.config/claudex/CLAUDE.md.d/*
+!.config/claudex/CLAUDE.md.d/01-memory-management.md
+!.config/claudex/CLAUDE.md.d/02-git-workflow.md
+!.config/claudex/CLAUDE.md.d/03-cli-best-practices.md
+!.config/claudex/CLAUDE.md.d/04-code-exploration.md
+!.config/claudex/CLAUDE.md.d/05-rust-development.md
+!.config/claudex/CLAUDE.md.d/06-code-style.md
+
 !.config/htop
 .config/htop/*
 !.config/htop/htoprc
