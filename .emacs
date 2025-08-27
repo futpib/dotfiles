@@ -330,6 +330,7 @@
 
 ;; use eslint with modes for files
 (flycheck-add-mode 'javascript-eslint 'js2-mode)
+(flycheck-add-mode 'javascript-eslint 'web-mode)
 
 (flycheck-add-next-checker 'javascript-flow 'javascript-eslint)
 
