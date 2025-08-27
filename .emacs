@@ -1,7 +1,10 @@
 (defvar bootstrap-version)
 (let ((bootstrap-file
-       (expand-file-name "straight/repos/straight.el/bootstrap.el" user-emacs-directory))
-      (bootstrap-version 6))
+       (expand-file-name
+        "straight/repos/straight.el/bootstrap.el"
+        (or (bound-and-true-p straight-base-dir)
+            user-emacs-directory)))
+      (bootstrap-version 7))
   (unless (file-exists-p bootstrap-file)
     (with-current-buffer
         (url-retrieve-synchronously
@@ -55,10 +58,10 @@
 (straight-use-package 'let-alist)
 (straight-use-package 'lsp-mode)
 (straight-use-package 'lv)
-(straight-use-package 'magit)
-(straight-use-package 'magit-popup)
-(straight-use-package 'magit-section)
-(straight-use-package 'magit-svn)
+;(straight-use-package 'magit)
+;(straight-use-package 'magit-popup)
+;(straight-use-package 'magit-section)
+;(straight-use-package 'magit-svn)
 (straight-use-package 'marginalia)
 (straight-use-package 'markdown-mode)
 (straight-use-package 'nadvice)
@@ -98,8 +101,8 @@
 (straight-use-package 'yaml-mode)
 (straight-use-package 'swift-mode)
 (straight-use-package 'copilot)
-(straight-use-package
- '(copilot-chat :host github :repo "chep/copilot-chat.el" :files ("*.el")))
+;(straight-use-package
+; '(copilot-chat :host github :repo "chep/copilot-chat.el" :files ("*.el")))
 (straight-use-package
  '(prisma-mode :type git :host github :repo "pimeys/emacs-prisma-mode"))
 
