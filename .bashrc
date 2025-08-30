@@ -4,8 +4,6 @@ HISTCONTROL=ignoreboth
 HISTSIZE=10000
 SAVEHIST=10000
 
-export GREP_COLORS='mt=1;33'
-
 alias ls='ls --color=auto'
 alias grep='grep --color=auto'
 
@@ -56,6 +54,12 @@ if echo "$-" | grep i > /dev/null; then
         printf '%ds\n' $S
     }
 
+    __refresh_history () {
+        history -a
+        history -c
+        history -r
+    }
+
     __hr () { # __hr left_text right_text line_color
     #     printf "$1"'%*s\n' "$(($(tput cols) - ${#1}))" "$2" | sed 's/ /—/g';
     # 1 for text at left
@@ -88,6 +92,8 @@ if echo "$-" | grep i > /dev/null; then
         else
             __empty_command="false"
         fi
+
+        __refresh_history
 
         __last_started="$(date '+%s')"
         __hr " ${IBlack}started at [$(date '+%H:%M:%S')]${Color_Off} "\
