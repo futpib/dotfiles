@@ -362,6 +362,15 @@
 (windmove-default-keybindings 'meta)
 
 (desktop-save-mode 1)
+(defun my-remove-stale-desktop-lock ()
+  "Remove stale desktop lock file if the PID is not running or not an Emacs process."
+  (when (and desktop-dirname (file-exists-p (desktop-full-lock-name)))
+    (let ((pid (desktop-owner)))
+      (when pid
+        (unless (equal (alist-get 'comm (process-attributes (or pid 0))) "emacs")
+          (delete-file (desktop-full-lock-name)))))))
+(add-hook 'desktop-after-read-hook 'my-remove-stale-desktop-lock)
+(setq desktop-load-locked-desktop 'check-pid)
 
 (add-hook 'haskell-mode-hook 'haskell-indentation-mode)
 
