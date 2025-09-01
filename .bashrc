@@ -93,8 +93,6 @@ if echo "$-" | grep i > /dev/null; then
             __empty_command="false"
         fi
 
-        __refresh_history
-
         __last_started="$(date '+%s')"
         __hr " ${IBlack}started at [$(date '+%H:%M:%S')]${Color_Off} "\
             ""\
