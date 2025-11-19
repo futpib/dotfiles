@@ -59,6 +59,7 @@
 
 !.config/claudex
 .config/claudex/*
+!.config/claudex/config.json
 !.config/claudex/CLAUDE.md.d
 .config/claudex/CLAUDE.md.d/*
 !.config/claudex/CLAUDE.md.d/01-memory-management.md
