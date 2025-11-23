@@ -135,6 +135,7 @@ if echo "$-" | grep i > /dev/null; then
         [[ $BASH_SUBSHELL -ne 0 ]] && return
 
         [[ "$__empty_command" == "true" ]] && return
+        __empty_command="true"
 
         if [[ "$__do_not_print_when_started" = "true" ]]; then
             unset __do_not_print_when_started
