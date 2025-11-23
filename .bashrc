@@ -54,51 +54,6 @@ if echo "$-" | grep i > /dev/null; then
         printf '%ds\n' $S
     }
 
-    __refresh_history () {
-        history -a
-        history -c
-        history -r
-    }
-
-    __hr () { # __hr left_text right_text line_color
-    #     printf "$1"'%*s\n' "$(($(tput cols) - ${#1}))" "$2" | sed 's/ /—/g';
-    # 1 for text at left
-    # 2 for text at right
-    # 3 for setting line color
-    #     printf "$3\r"
-    #     printf "%*s\r" "$(tput cols)" "${Color_Off}${2}" | sed 'y/ _/— /'
-    #     printf "${Color_Off}\r"
-    #     printf "$1\n"
-        
-        local r_noescape="$( echo ""$2"" | sed -E 's#\e\[([0-9];)?[0-9]+m##g' )"
-        local rlen="${#r_noescape}"
-        
-        printf "\r$3"
-        printf '%*s' "$(tput cols)" '' | sed 's/ /─/g'
-        printf "$(__replicate '\\b' $(($rlen - 1)))"
-        printf "${Color_Off}$2\r${Color_Off}$1${Color_Off}\n"
-    }
-
-    __do_not_print_when_started="true"
-    __last_started=""
-    __empty_command="false"
-
-    preexec () {
-        [[ $BASH_SUBSHELL -ne 0 ]] && return
-        if [[ "__precmd" == "$BASH_COMMAND" ]]
-        then
-            __empty_command="true"
-            return
-        else
-            __empty_command="false"
-        fi
-
-        __last_started="$(date '+%s')"
-        __hr " ${IBlack}started at [$(date '+%H:%M:%S')]${Color_Off} "\
-            ""\
-            "${Blue}"
-    }
-
     __print_part_in_brackets () {
         local protocol=''
         if [ -n "${SSH_TTY}" ]; then
@@ -130,7 +85,52 @@ if echo "$-" | grep i > /dev/null; then
         fi
     }
 
-    __precmd () {
+    __refresh_history () {
+        history -a
+        history -c
+        history -r
+    }
+
+    __hr () { # __hr left_text right_text line_color
+    #     printf "$1"'%*s\n' "$(($(tput cols) - ${#1}))" "$2" | sed 's/ /—/g';
+    # 1 for text at left
+    # 2 for text at right
+    # 3 for setting line color
+    #     printf "$3\r"
+    #     printf "%*s\r" "$(tput cols)" "${Color_Off}${2}" | sed 'y/ _/— /'
+    #     printf "${Color_Off}\r"
+    #     printf "$1\n"
+        
+        local r_noescape="$( echo ""$2"" | sed -E 's#\e\[([0-9];)?[0-9]+m##g' )"
+        local rlen="${#r_noescape}"
+        
+        printf "\r$3"
+        printf '%*s' "$(tput cols)" '' | sed 's/ /─/g'
+        printf "$(__replicate '\\b' $(($rlen - 1)))"
+        printf "${Color_Off}$2\r${Color_Off}$1${Color_Off}\n"
+    }
+
+    __do_not_print_when_started="true"
+    __last_started=""
+    __empty_command="true"
+
+    preexec () {
+        [[ $BASH_SUBSHELL -ne 0 ]] && return
+        if [[ "bash" == "$1" ]]
+        then
+            __empty_command="true"
+            return
+        else
+            __empty_command="false"
+        fi
+
+        __last_started="$(date '+%s')"
+        __hr " ${IBlack}started at [$(date '+%H:%M:%S')]${Color_Off} "\
+            ""\
+            "${Blue}"
+    }
+
+    precmd () {
         local returned=$?
         [[ $BASH_SUBSHELL -ne 0 ]] && return
 
@@ -173,9 +173,6 @@ if echo "$-" | grep i > /dev/null; then
             "${returned_full}"\
             "${returned_hr_color}"
     }
-
-    PROMPT_COMMAND="__precmd"
-    preexec_install
 
     __nvm_use
 
