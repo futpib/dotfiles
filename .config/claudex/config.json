@@ -1,10 +1,18 @@
 {
-  "packages": ["deno", "github-cli", "libyaml"],
+  "packages": [
+    "nodejs",
+    "deno",
+    "github-cli",
+    "libyaml",
+    "yarn",
+    "python",
+    "lynx"
+  ],
   "volumes": [
     "~/.config/gh/",
     "~/.local/bin/"
   ],
   "env": {
-    "PATH": "/home/futpib/.local/bin/:/home/futpib/.local/share/npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    "PATH": "~/.rbenv/shims/:~/.local/bin/:~/.local/share/npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
   }
 }
