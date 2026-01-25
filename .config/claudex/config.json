@@ -2,6 +2,7 @@
   "packages": [
     "nodejs",
     "deno",
+    "bun",
     "github-cli",
     "libyaml",
     "yarn",
