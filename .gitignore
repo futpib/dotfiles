@@ -19,7 +19,6 @@
 !.emacs.d/straight/versions/default.el
 
 !.bash_colors
-!.bash_preexec
 !.bashrc
 
 !.looking-glass-client.ini

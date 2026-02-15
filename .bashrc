@@ -34,8 +34,6 @@ source-env () {
 
 if echo "$-" | grep i > /dev/null; then
     source ~/.bash_colors
-    source ~/.bash_preexec
-
     # PS stuff
     __replicate () {
         printf "%*s" "$2" "" | sed "s| |$1|g"
@@ -110,39 +108,28 @@ if echo "$-" | grep i > /dev/null; then
         printf "${Color_Off}$2\r${Color_Off}$1${Color_Off}\n"
     }
 
-    __do_not_print_when_started="true"
-    __last_started=""
-    __empty_command="true"
+    __bash_timer_file="${XDG_RUNTIME_DIR:-/tmp}/.bash_timer_$$"
+    trap 'rm -f "$__bash_timer_file"' EXIT
 
-    preexec () {
-        [[ $BASH_SUBSHELL -ne 0 ]] && return
-        if [[ "bash" == "$1" ]]
-        then
-            __empty_command="true"
-            return
-        else
-            __empty_command="false"
-        fi
-
-        __last_started="$(date '+%s')"
+    __ps0_preexec () {
+        date '+%s' > "$__bash_timer_file"
         __hr " ${IBlack}started at [$(date '+%H:%M:%S')]${Color_Off} "\
             ""\
             "${Blue}"
     }
 
-    precmd () {
+    __prompt_command () {
         local returned=$?
-        [[ $BASH_SUBSHELL -ne 0 ]] && return
 
-        [[ "$__empty_command" == "true" ]] && return
-        __empty_command="true"
-
-        if [[ "$__do_not_print_when_started" = "true" ]]; then
-            unset __do_not_print_when_started
+        if [[ ! -f "$__bash_timer_file" ]]; then
             return
         fi
 
-        if [[ $returned > 0 ]]; then
+        local last_started
+        last_started=$(<"$__bash_timer_file")
+        rm -f "$__bash_timer_file"
+
+        if [[ $returned -gt 0 ]]; then
             local returned_full="${Color_Off} error $returned "
             local returned_hr_color="${Red}"
         else
@@ -165,7 +152,8 @@ if echo "$-" | grep i > /dev/null; then
             important_vars="${important_vars}netns: ${netns} "
         fi
 
-        spent="$(__displaytime $(( $(date '+%s') - __last_started )))"
+        local spent
+        spent="$(__displaytime $(( $(date '+%s') - last_started )))"
 
         __nvm_use
 
@@ -174,6 +162,9 @@ if echo "$-" | grep i > /dev/null; then
             "${returned_full}"\
             "${returned_hr_color}"
     }
+
+    PROMPT_COMMAND='__prompt_command'
+    PS0='$(__ps0_preexec)\n'
 
     __nvm_use
 
