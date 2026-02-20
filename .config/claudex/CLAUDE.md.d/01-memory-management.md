@@ -8,3 +8,4 @@
   - Remember **how to do things** rather than **what was done**
   - Think about **future utility** when deciding what to remember
   - When updating memory, also review session interruptions and workflow issues to identify patterns worth remembering
+- To search past conversations, use `claudex-memory-search <pattern>`

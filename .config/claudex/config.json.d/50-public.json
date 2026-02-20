@@ -1,0 +1,41 @@
+{
+  "packages": [
+    "nodejs",
+    "deno",
+    "bun",
+    "libyaml",
+    "yarn",
+    "python",
+    "lynx",
+    "curl-impersonate",
+    "yt-dlp"
+  ],
+  "volumes": [
+    "~/.local/bin/"
+  ],
+  "env": {
+    "PATH": "~/.cargo/bin:~/.rbenv/shims/:~/.local/bin/:~/.local/share/npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+  },
+  "hooks": true,
+  "profiles": [
+    "gh"
+  ],
+  "profileDefinitions": {
+    "glab": {
+      "packages": [
+        "glab"
+      ],
+      "volumes": [
+        "~/.config/glab-cli/"
+      ]
+    },
+    "gh": {
+      "packages": [
+        "github-cli"
+      ],
+      "volumes": [
+        "~/.config/gh/"
+      ]
+    }
+  }
+}

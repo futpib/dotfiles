@@ -58,7 +58,9 @@
 
 !.config/claudex
 .config/claudex/*
-!.config/claudex/config.json
+!.config/claudex/config.json.d
+.config/claudex/config.json.d/*
+!.config/claudex/config.json.d/50-public.json
 !.config/claudex/CLAUDE.md.d
 .config/claudex/CLAUDE.md.d/*
 !.config/claudex/CLAUDE.md.d/01-memory-management.md
