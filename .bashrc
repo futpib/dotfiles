@@ -163,7 +163,11 @@ if echo "$-" | grep i > /dev/null; then
             "${returned_hr_color}"
     }
 
-    PROMPT_COMMAND='__prompt_command'
+    __set_terminal_title () {
+        printf '\033]2;%s@%s:%s\033\\' "$USER" "$HOSTNAME" "${PWD/#$HOME/\~}"
+    }
+
+    PROMPT_COMMAND='__prompt_command; __set_terminal_title'
     PS0='$(__ps0_preexec)\n'
 
     __nvm_use
