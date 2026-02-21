@@ -70,6 +70,7 @@ keys' conf@(XConfig {XMonad.modMask = modMask}) = M.fromList $
     , ((modMask,               xK_F2    ), spawnRunner)
     , ((modMask,               xK_slash ), spawnSwitcher)
     , ((modMask,               xK_v     ), spawnClipboardManager)
+    , ((modMask .|. shiftMask, xK_v     ), spawnClipboardManagerRemove)
     , ((modMask,               xK_Escape), spawnDunstctl "close")
     , ((modMask .|. controlMask, xK_Escape), spawnDunstctl "close-all")
     , ((modMask .|. shiftMask, xK_Escape), spawnDunstctl "history-pop")
@@ -156,6 +157,7 @@ keys' conf@(XConfig {XMonad.modMask = modMask}) = M.fromList $
 spawnRunner = spawn "rofi -show run"
 spawnSwitcher = spawn "rofi -show window"
 spawnClipboardManager = spawn "clipcat-menu"
+spawnClipboardManagerRemove = spawn "clipcat-menu remove"
 
 spawnDunstctl :: String -> X ()
 spawnDunstctl s = spawn $ "dunstctl " ++ s
