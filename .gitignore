@@ -70,6 +70,10 @@
 !.config/claudex/CLAUDE.md.d/05-rust-development.md
 !.config/claudex/CLAUDE.md.d/06-code-style.md
 
+!.config/tmux
+.config/tmux/*
+!.config/tmux/tmux.conf
+
 !.config/htop
 .config/htop/*
 !.config/htop/htoprc
