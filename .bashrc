@@ -52,6 +52,10 @@ if echo "$-" | grep i > /dev/null; then
         printf '%ds\n' $S
     }
 
+    __strip_ansi () {
+        printf '%s' "$1" | sed -E 's/\x1b\[([0-9];)?[0-9]*m//g'
+    }
+
     __print_part_in_brackets () {
         local protocol=''
         if [ -n "${SSH_TTY}" ]; then
@@ -164,7 +168,9 @@ if echo "$-" | grep i > /dev/null; then
     }
 
     __set_terminal_title () {
-        printf '\033]2;%s@%s:%s\033\\' "$USER" "$HOSTNAME" "${PWD/#$HOME/\~}"
+        local title
+        title="$(__strip_ansi "$(__print_part_in_brackets)")"
+        printf '\033]2;%s\033\\' "$title"
     }
 
     PROMPT_COMMAND='__prompt_command; __set_terminal_title'
