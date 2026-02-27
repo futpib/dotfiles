@@ -3,12 +3,15 @@
     "nodejs",
     "deno",
     "bun",
+    "rustup",
     "libyaml",
     "yarn",
     "python",
+    "uv",
     "lynx",
     "curl-impersonate",
-    "yt-dlp"
+    "yt-dlp",
+    "nix"
   ],
   "volumes": [
     "~/.local/bin/"
@@ -18,7 +21,7 @@
   },
   "hooks": true,
   "profiles": [
-    "gh"
+    "github-cli"
   ],
   "profileDefinitions": {
     "glab": {
@@ -29,7 +32,7 @@
         "~/.config/glab-cli/"
       ]
     },
-    "gh": {
+    "github-cli": {
       "packages": [
         "github-cli"
       ],
