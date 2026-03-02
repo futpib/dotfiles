@@ -27,9 +27,15 @@ complete -cf s sudo kdesu man exec which whereis xargs
 source ~/.profile
 
 source-env () {
+    local tmpfile
+    tmpfile="$(mktemp)"
+    sed 's/^\([A-Za-z_][A-Za-z_0-9]*\): /\1=/' "$1" > "$tmpfile" || { rm -f "$tmpfile"; return 1; }
     set -o allexport
-    source "$1" || return 1
+    source "$tmpfile"
+    local ret=$?
     set +o allexport
+    rm -f "$tmpfile"
+    return $ret
 }
 
 if echo "$-" | grep i > /dev/null; then
