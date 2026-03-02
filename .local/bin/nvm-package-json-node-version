@@ -18,6 +18,15 @@ async function fileExists(path: string) {
     return stats.isFile();
 }
 
+function resolveSemverRangeToMajor(range: string): number | undefined {
+    for (let majorVersion = 1; majorVersion <= 1024; majorVersion++) {
+        if (semver.satisfies(`${majorVersion}.99999.99999`, range)) {
+            return majorVersion;
+        }
+    }
+    return undefined;
+}
+
 async function readPackageJsonNodeVersion() {
     const packageJsonString = await fs.readFile('package.json', 'utf-8');
     const packageJson: {
@@ -31,10 +40,14 @@ async function readPackageJsonNodeVersion() {
         return undefined;
     }
 
-    for (let majorVersion = 1; majorVersion <= 1024; majorVersion++) {
-        if (semver.satisfies(`${majorVersion}.99999.99999`, nodeVersion)) {
-            return majorVersion;
-        }
+    return resolveSemverRangeToMajor(nodeVersion);
+}
+
+async function readNvmrcVersion() {
+    const nvmrcContent = (await fs.readFile('.nvmrc', 'utf-8')).trim();
+
+    if (/^[~^>=<]/.test(nvmrcContent) || /\s/.test(nvmrcContent)) {
+        return resolveSemverRangeToMajor(nvmrcContent);
     }
 
     return undefined;
@@ -46,7 +59,11 @@ async function main() {
     const nvmrcExists = await fileExists('.nvmrc');
     const packageJsonExists = await fileExists('package.json');
 
-    if (!nvmrcExists && packageJsonExists) {
+    if (nvmrcExists) {
+        version = await readNvmrcVersion();
+    }
+
+    if (version === undefined && !nvmrcExists && packageJsonExists) {
         version = await readPackageJsonNodeVersion();
     }
 
