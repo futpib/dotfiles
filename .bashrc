@@ -78,9 +78,9 @@ if echo "$-" | grep i > /dev/null; then
     __nvm_use () {
         if [[ "$PWD" != "$__nvm_use_last_pwd" && ( -f ".nvmrc" || -f "package.json" ) ]]; then
             __nvm_use_last_pwd="$PWD"
-            local package_json_version="$(nvm-package-json-node-version)"
-            if [[ "${package_json_version}" != "" ]]; then
-                nvm use "${package_json_version}"
+            local resolved_version="$(nvm-package-json-node-version)"
+            if [[ "${resolved_version}" != "" ]]; then
+                nvm use "${resolved_version}"
             elif [[ -f ".nvmrc" ]]; then
                 nvm use
             fi
