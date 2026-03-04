@@ -1,5 +1,7 @@
 # Git Workflow Best Practices
 
+- Never commit unless explicitly asked to
+- Never push unless explicitly asked to
 - Use descriptive branch names that indicate the purpose of the changes
 - If Claude made changes to code, it may include co-authorship
 - Commit message guidelines:

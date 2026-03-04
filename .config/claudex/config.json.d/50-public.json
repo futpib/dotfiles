@@ -11,7 +11,10 @@
     "lynx",
     "curl-impersonate",
     "yt-dlp",
-    "nix"
+    "nix",
+    "corepack",
+    "npm",
+    "nvm"
   ],
   "volumes": [
     "~/.local/bin/"

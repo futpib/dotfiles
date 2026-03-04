@@ -69,6 +69,7 @@
 !.config/claudex/CLAUDE.md.d/04-code-exploration.md
 !.config/claudex/CLAUDE.md.d/05-rust-development.md
 !.config/claudex/CLAUDE.md.d/06-code-style.md
+!.config/claudex/CLAUDE.md.d/07-autonomy-boundaries.md
 
 !.config/tmux
 .config/tmux/*
