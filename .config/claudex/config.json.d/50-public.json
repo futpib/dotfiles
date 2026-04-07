@@ -14,13 +14,14 @@
     "nix",
     "corepack",
     "npm",
-    "nvm"
+    "nvm",
+    "claugrep-git"
   ],
   "volumes": [
     "~/.local/bin/"
   ],
   "env": {
-    "PATH": "~/.cargo/bin:~/.rbenv/shims/:~/.local/bin/:~/.local/share/npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    "PATH": "~/.cargo/bin:~/.local/bin/:~/.local/share/npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
   },
   "hooks": true,
   "profiles": [
@@ -42,6 +43,17 @@
       "volumes": [
         "~/.config/gh/"
       ]
+    },
+    "rbenv": {
+      "packages": [
+        "rbenv"
+      ],
+      "volumes": [
+        "~/.rbenv/"
+      ],
+      "env": {
+        "PATH": "~/.rbenv/shims/"
+      }
     }
   }
 }
