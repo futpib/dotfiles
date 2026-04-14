@@ -15,7 +15,9 @@
     "corepack",
     "npm",
     "nvm",
-    "claugrep-git"
+    "claugrep-git",
+    "unzip",
+    "graphviz"
   ],
   "volumes": [
     "~/.local/bin/"
@@ -27,6 +29,16 @@
   "profiles": [
     "github-cli"
   ],
+  "claudeArgs": [
+    "--effort",
+    "max"
+  ],
+  "claudeEnv": {
+    "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING": "1"
+  },
+  "claudeSettings": {
+    "showThinkingSummaries": true
+  },
   "profileDefinitions": {
     "glab": {
       "packages": [
