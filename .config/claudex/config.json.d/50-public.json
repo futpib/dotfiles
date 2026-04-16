@@ -40,6 +40,24 @@
     "showThinkingSummaries": true
   },
   "profileDefinitions": {
+    "adb": {
+      "packages": [
+        "android-tools"
+      ],
+      "hostPorts": [
+        5037
+      ]
+    },
+    "flutter": {
+      "packages": [
+        "fvm",
+        "dart"
+      ],
+      "volumes": [
+        "~/fvm",
+        "~/.pub-cache"
+      ]
+    },
     "glab": {
       "packages": [
         "glab"
@@ -58,7 +76,8 @@
     },
     "rbenv": {
       "packages": [
-        "rbenv"
+        "rbenv",
+        "ruby-build"
       ],
       "volumes": [
         "~/.rbenv/"
