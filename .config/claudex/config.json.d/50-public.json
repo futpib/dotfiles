@@ -65,6 +65,9 @@
         "android-sdk-build-tools",
         "android-sdk-cmdline-tools-latest",
         "android-platform"
+      ],
+      "volumes": [
+        "~/Android/Sdk"
       ]
     },
     "flutter-desktop": {
