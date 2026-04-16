@@ -58,6 +58,24 @@
         "~/.pub-cache"
       ]
     },
+    "flutter-android": {
+      "packages": [
+        "android-sdk",
+        "android-sdk-platform-tools",
+        "android-sdk-build-tools",
+        "android-sdk-cmdline-tools-latest",
+        "android-platform"
+      ]
+    },
+    "flutter-desktop": {
+      "packages": [
+        "cmake",
+        "ninja",
+        "pkg-config",
+        "clang",
+        "gtk3"
+      ]
+    },
     "glab": {
       "packages": [
         "glab"
