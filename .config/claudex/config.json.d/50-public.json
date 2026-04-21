@@ -31,7 +31,9 @@
   ],
   "claudeArgs": [
     "--effort",
-    "max"
+    "max",
+    "--thinking-display",
+    "summarized"
   ],
   "claudeEnv": {
     "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING": "1"
@@ -64,7 +66,8 @@
         "android-sdk-platform-tools",
         "android-sdk-build-tools",
         "android-sdk-cmdline-tools-latest",
-        "android-platform"
+        "android-platform",
+        "jdk21-openjdk"
       ],
       "volumes": [
         "~/Android/Sdk"
