@@ -109,6 +109,40 @@
       "env": {
         "PATH": "~/.rbenv/shims/"
       }
+    },
+    "lightpanda": {
+      "packages": [
+        "curl"
+      ],
+      "env": {
+        "PATH": "/opt/lightpanda/bin"
+      },
+      "rootInitCommands": [
+        "mkdir -p /opt/lightpanda/bin",
+        "curl -fsSL -o /opt/lightpanda/bin/lightpanda https://github.com/lightpanda-io/browser/releases/download/nightly/lightpanda-x86_64-linux",
+        "chmod +x /opt/lightpanda/bin/lightpanda"
+      ]
+    },
+    "agent-browser": {
+      "packages": [
+        "nodejs",
+        "npm",
+        "chromium"
+      ],
+      "volumes": [
+        "~/.agent-browser/",
+        "~/.cache/ms-playwright/"
+      ],
+      "env": {
+        "npm_config_prefix": "~/.local/share/npm-global",
+        "PATH": "~/.local/share/npm-global/bin"
+      },
+      "userInitCommands": [
+        "npm install -g agent-browser"
+      ],
+      "userStartupCommands": [
+        "[ -d ~/.cache/ms-playwright ] && [ -n \"$(ls -A ~/.cache/ms-playwright 2>/dev/null)\" ] || agent-browser install"
+      ]
     }
   }
 }
