@@ -8,3 +8,7 @@
   - Describe the changes being made, focusing on the "why" rather than the "what"
   - Keep first line concise (50-72 characters)
   - Add detailed explanation in subsequent paragraphs if needed
+  - Write for a reader unfamiliar with the conversation. Don't reference
+    rejected alternatives only discussed in chat (e.g. "instead of doing X"),
+    forward-looking promises ("will follow in a separate commit"), or other
+    session-only context. The message must stand alone in `git log`.
