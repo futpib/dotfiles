@@ -27,11 +27,14 @@
   },
   "hooks": true,
   "profiles": [
-    "github-cli"
+    "github-cli",
+    "slopd"
   ],
   "launcherOverrides": {
     "claude": {
       "args": [
+        "--model",
+        "opus",
         "--effort",
         "max",
         "--thinking-display",
@@ -46,6 +49,16 @@
     }
   },
   "profileDefinitions": {
+    "slopd": {
+      "volumes": [
+        "${XDG_RUNTIME_DIR}/slopd/",
+        "/usr/bin/slopctl"
+      ],
+      "env": {
+        "XDG_RUNTIME_DIR": "${XDG_RUNTIME_DIR}",
+        "TMUX_PANE": "${TMUX_PANE}"
+      }
+    },
     "adb": {
       "packages": [
         "android-tools"
