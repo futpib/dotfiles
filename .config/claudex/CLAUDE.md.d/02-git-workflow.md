@@ -12,3 +12,4 @@
     rejected alternatives only discussed in chat (e.g. "instead of doing X"),
     forward-looking promises ("will follow in a separate commit"), or other
     session-only context. The message must stand alone in `git log`.
+  - `#123` in commit messages or any GitHub text field refers to issue/PR numbers — avoid it unless you intend to link an issue or PR
