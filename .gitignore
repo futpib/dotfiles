@@ -101,6 +101,7 @@
 .local/*
 !.local/bin/
 .local/bin/*
+!.local/bin/lvcache
 !.local/bin/ffmpeg-mute
 !.local/bin/chrome-headless
 !.local/bin/emacsclient-wrapper

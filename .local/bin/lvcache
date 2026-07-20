@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+
+set -xe
+
+target_logical_volume_path=vg0/cryptroot
+
+#cache_mode=writeback
+cache_mode=writethrough
+
+function lv_cache_status {
+    lvs -a -o +devices,cache_total_blocks,cache_used_blocks,cache_dirty_blocks,cache_read_hits,cache_read_misses,cache_write_hits,cache_write_misses,segtype
+}
+
+function lv_cache_enable {
+    cache_physical_volume="$1"
+
+    if ! [ -b "$cache_physical_volume" ]; then
+        echo "Usage: $0 enable <cache_physical_volume>"
+        exit 1
+    fi
+
+    lvcreate --cache -l 50%FREE --chunksize 4M --cachemode "$cache_mode" "$target_logical_volume_path" "$cache_physical_volume"
+}
+
+function lv_cache_disable {
+    lvconvert --uncache "$target_logical_volume_path"
+}
+
+function main {
+    case "$1" in
+        status)
+            lv_cache_status
+            ;;
+        enable)
+            lv_cache_enable "$2"
+            ;;
+        disable)
+            lv_cache_disable
+            ;;
+        *)
+            echo "Usage: $0 <status|disable>"
+            echo "       $0 enable <cache_physical_volume>"
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"
