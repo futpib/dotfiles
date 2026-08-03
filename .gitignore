@@ -50,6 +50,10 @@
 .config/rofi/*
 !.config/rofi/config.rasi
 
+!.config/paru
+.config/paru/*
+!.config/paru/paru.conf
+
 !.config/clipcat
 .config/clipcat/*
 !.config/clipcat/clipcatd.toml
