@@ -7,8 +7,75 @@ target_logical_volume_path=vg0/cryptroot
 #cache_mode=writeback
 cache_mode=writethrough
 
+# Columns both the raw table and the summary care about.
+cache_columns=cache_mode,chunk_size,cache_total_blocks,cache_used_blocks,cache_dirty_blocks,cache_read_hits,cache_read_misses,cache_write_hits,cache_write_misses
+
 function lv_cache_status {
-    lvs -a -o +devices,cache_total_blocks,cache_used_blocks,cache_dirty_blocks,cache_read_hits,cache_read_misses,cache_write_hits,cache_write_misses,segtype
+    lvs -a -o "+$cache_columns,devices,segtype"
+
+    echo
+    lv_cache_summary
+}
+
+# Derived view of the numbers above: sizes instead of chunk counts, hit rates
+# instead of raw counters, and warnings for states that are easy to misread.
+function lv_cache_summary {
+    local columns fields
+    columns="lv_name,$cache_columns,kernel_cache_mode,metadata_percent"
+    fields=$(lvs --noheadings --nosuffix --units b --separator=, \
+        -o "$columns" "$target_logical_volume_path")
+
+    awk -v columns="$columns" -v raw="$fields" -f /dev/stdin <<'AWK'
+        function human(b,   u, i) {
+            split("B K M G T P", u, " ")
+            i = 1
+            while (b >= 1024 && i < 6) { b /= 1024; i++ }
+            return sprintf("%.1f%s", b, u[i])
+        }
+        function pct(a, b) { return b > 0 ? 100 * a / b : 0 }
+        BEGIN {
+            n = split(columns, c, ",")
+            split(raw, f, ",")
+            for (i = 1; i <= n; i++) {
+                gsub(/^[ \t]+|[ \t]+$/, "", c[i])
+                gsub(/^[ \t]+|[ \t]+$/, "", f[i])
+                v[c[i]] = f[i]
+            }
+
+            name = v["lv_name"]; mode = v["cache_mode"]; kmode = v["kernel_cache_mode"]
+            chunk = v["chunk_size"] + 0
+            total = v["cache_total_blocks"] + 0
+            used = v["cache_used_blocks"] + 0
+            dirty = v["cache_dirty_blocks"] + 0
+            rh = v["cache_read_hits"] + 0;  rm = v["cache_read_misses"] + 0
+            wh = v["cache_write_hits"] + 0; wm = v["cache_write_misses"] + 0
+            metapct = v["metadata_percent"] + 0
+
+            printf("=== cache summary: %s ===\n", name)
+
+            if (total == 0) {
+                print "  cache         not enabled"
+                exit
+            }
+
+            printf("  mode          %s (kernel: %s)\n", mode, kmode)
+            printf("  chunk size    %s\n", human(chunk))
+            printf("  cache size    %-9s (%d chunks)\n", human(total * chunk), total)
+            printf("  used          %-9s (%d chunks, %.1f%%)\n", human(used * chunk), used, pct(used, total))
+            printf("  dirty         %-9s (%d chunks, %.1f%%)\n", human(dirty * chunk), dirty, pct(dirty, total))
+            printf("  metadata      %.1f%% used\n", metapct)
+            printf("  reads         %d hit / %d miss -> %.1f%% hit rate\n", rh, rm, pct(rh, rh + rm))
+            printf("  writes        %d hit / %d miss -> %.1f%% hit rate\n", wh, wm, pct(wh, wh + wm))
+            printf("  overall       %d hit / %d miss -> %.1f%% hit rate\n", rh + wh, rm + wm, pct(rh + wh, rm + wm + rh + wh))
+
+            if (kmode != "" && mode != kmode)
+                printf("\n  ! stored mode (%s) != running kernel mode (%s);\n    the pool predates the config change and kept its original mode\n", mode, kmode)
+            if (kmode == "writethrough")
+                print "\n  note: writethrough pins dirty to 0 by design -- it is not a flush indicator,\n        and write hits do not accelerate writes (origin stays on the write path)"
+            if (pct(used, total) < 50)
+                printf("\n  note: only %.1f%% of the cache is populated; hit rates will keep\n        improving as it warms\n", pct(used, total))
+        }
+AWK
 }
 
 function lv_cache_enable {
