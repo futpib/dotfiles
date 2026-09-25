@@ -1,0 +1,561 @@
+#!/usr/bin/env -S deno run --allow-run=adb
+
+type CommandResult = {
+  success: boolean;
+  code: number;
+  stdout: string;
+  stderr: string;
+};
+
+export type MdnsService = {
+  name: string;
+  type: string;
+  endpoint: string;
+};
+
+export type AdbDevice = {
+  serial: string;
+  state: string;
+  details: string;
+};
+
+export type Options = {
+  pairEndpoint?: string;
+  connectEndpoint?: string;
+  serial?: string;
+  pollMilliseconds: number;
+  help: boolean;
+};
+
+export type Dependencies = {
+  adb(args: string[]): CommandResult | Promise<CommandResult>;
+  prompt(message: string): string | null;
+  sleep(milliseconds: number): Promise<void>;
+  out(message: string): void;
+  err(message: string): void;
+};
+
+const decoder = new TextDecoder();
+
+const adbInstallHelp = `Missing dependency: adb (Android SDK Platform-Tools)
+
+Install it with one of:
+  Arch/Manjaro:   sudo pacman -S android-tools
+  Debian/Ubuntu:  sudo apt install adb
+  Fedora:         sudo dnf install android-tools
+
+Or install the latest Platform-Tools from:
+  https://developer.android.com/tools/releases/platform-tools`;
+
+const help = `Usage: adb-wireless [options]
+
+Discover, pair, and connect an Android wireless-debugging device. The command
+keeps running until the target appears in "adb devices -l" with state "device".
+
+Options:
+  --pair HOST:PORT       Use this pairing endpoint instead of mDNS discovery
+  --connect HOST:PORT    Use this connection endpoint instead of discovery
+  --serial SERIAL        Require this exact serial in adb devices output
+  --poll SECONDS         Discovery polling interval (default: 2)
+  -h, --help             Show this help
+
+On the phone, open:
+  Developer options > Wireless debugging > Pair device with pairing code
+
+Android advertises random pairing and connection ports with mDNS. The two
+ports are normally different. Wireless debugging is LAN/VPN scoped; a public
+WAN address cannot be discovered through NAT. Use --pair and --connect for a
+reachable routed/VPN endpoint when mDNS is unavailable.
+`;
+
+function optionValue(
+  args: string[],
+  index: number,
+  option: string,
+): [string, number] {
+  const inline = args[index].match(new RegExp(`^${option}=(.+)$`));
+  if (inline) {
+    return [inline[1], index];
+  }
+
+  const value = args[index + 1];
+  if (!value || value.startsWith('-')) {
+    throw new Error(`${option} requires a value`);
+  }
+  return [value, index + 1];
+}
+
+export function validateEndpoint(endpoint: string): string {
+  const match = endpoint.match(/^(?:\[[^\]]+\]|[^:\s]+):(\d+)$/);
+  const port = match ? Number(match[1]) : 0;
+  if (!match || port < 1 || port > 65535) {
+    throw new Error(`Invalid endpoint: ${endpoint} (expected HOST:PORT)`);
+  }
+  return endpoint;
+}
+
+export function parseArgs(args: string[]): Options {
+  const options: Options = {
+    pollMilliseconds: 2_000,
+    help: false,
+  };
+
+  for (let index = 0; index < args.length; index++) {
+    const argument = args[index];
+    if (argument === '-h' || argument === '--help') {
+      options.help = true;
+      continue;
+    }
+
+    if (argument === '--pair' || argument.startsWith('--pair=')) {
+      const [value, valueIndex] = optionValue(args, index, '--pair');
+      options.pairEndpoint = validateEndpoint(value);
+      index = valueIndex;
+      continue;
+    }
+
+    if (argument === '--connect' || argument.startsWith('--connect=')) {
+      const [value, valueIndex] = optionValue(args, index, '--connect');
+      options.connectEndpoint = validateEndpoint(value);
+      index = valueIndex;
+      continue;
+    }
+
+    if (argument === '--serial' || argument.startsWith('--serial=')) {
+      const [value, valueIndex] = optionValue(args, index, '--serial');
+      options.serial = value;
+      index = valueIndex;
+      continue;
+    }
+
+    if (argument === '--poll' || argument.startsWith('--poll=')) {
+      const [value, valueIndex] = optionValue(args, index, '--poll');
+      const seconds = Number(value);
+      if (!Number.isFinite(seconds) || seconds < 0.1) {
+        throw new Error('--poll must be at least 0.1 seconds');
+      }
+      options.pollMilliseconds = seconds * 1_000;
+      index = valueIndex;
+      continue;
+    }
+
+    throw new Error(`Unknown option: ${argument}`);
+  }
+
+  return options;
+}
+
+export function parseMdnsServices(output: string): MdnsService[] {
+  const services: MdnsService[] = [];
+  for (const line of output.split('\n')) {
+    const match = line.trim().match(
+      /^(\S+)\s+(_adb(?:-tls-(?:pairing|connect))?\._tcp)\s+(\S+)$/,
+    );
+    if (match) {
+      services.push({
+        name: match[1],
+        type: match[2],
+        endpoint: match[3],
+      });
+    }
+  }
+  return services;
+}
+
+export function parseAdbDevices(output: string): AdbDevice[] {
+  const devices: AdbDevice[] = [];
+  for (const line of output.split('\n')) {
+    const match = line.trim().match(/^(\S+)\s+(\S+)(?:\s+(.*))?$/);
+    if (!match || match[1] === 'List') {
+      continue;
+    }
+    devices.push({
+      serial: match[1],
+      state: match[2],
+      details: match[3] ?? '',
+    });
+  }
+  return devices;
+}
+
+function endpointHost(endpoint: string): string {
+  if (endpoint.startsWith('[')) {
+    return endpoint.slice(1, endpoint.indexOf(']'));
+  }
+  const colon = endpoint.lastIndexOf(':');
+  return colon === -1 ? endpoint : endpoint.slice(0, colon);
+}
+
+function isNetworkSerial(serial: string): boolean {
+  return /:\d+$/.test(serial) || serial.includes('._adb-tls-connect._tcp');
+}
+
+function serviceDeviceKey(name: string): string {
+  const parts = name.split('-');
+  return parts.length > 2 ? parts.slice(0, -1).join('-') : name;
+}
+
+function formatResult(result: CommandResult): string {
+  return [result.stdout.trim(), result.stderr.trim()].filter(Boolean).join('\n');
+}
+
+async function listDevices(deps: Dependencies): Promise<{
+  devices: AdbDevice[];
+  output: string;
+}> {
+  const result = await deps.adb(['devices', '-l']);
+  if (!result.success) {
+    throw new Error(`adb devices failed:\n${formatResult(result)}`);
+  }
+  return { devices: parseAdbDevices(result.stdout), output: result.stdout };
+}
+
+async function discoverServices(deps: Dependencies): Promise<MdnsService[]> {
+  const result = await deps.adb(['mdns', 'services']);
+  if (!result.success) {
+    throw new Error(
+      `ADB mDNS discovery failed:\n${formatResult(result)}\n` +
+        'Upgrade Android SDK Platform-Tools if "adb mdns" is unsupported. ' +
+        'Otherwise, supply --pair and --connect if mDNS is blocked on this network.',
+    );
+  }
+  return parseMdnsServices(result.stdout);
+}
+
+function selectService(
+  services: MdnsService[],
+  purpose: string,
+  deps: Dependencies,
+): MdnsService {
+  if (services.length === 1) {
+    return services[0];
+  }
+
+  deps.out(`Found multiple ${purpose} services:`);
+  services.forEach((service, index) => {
+    deps.out(`  ${index + 1}. ${service.name}  ${service.endpoint}`);
+  });
+
+  while (true) {
+    const answer = deps.prompt(`Choose a device [1-${services.length}]: `);
+    if (answer === null) {
+      throw new Error('Input cancelled');
+    }
+    const selected = Number(answer);
+    if (Number.isInteger(selected) && selected >= 1 && selected <= services.length) {
+      return services[selected - 1];
+    }
+    deps.err('Enter one of the listed numbers.');
+  }
+}
+
+function getPairingCode(deps: Dependencies): string {
+  while (true) {
+    const code = deps.prompt('Enter the six-digit pairing code shown by Android: ');
+    if (code === null) {
+      throw new Error('Input cancelled');
+    }
+    if (/^\d{6}$/.test(code.trim())) {
+      return code.trim();
+    }
+    deps.err('The pairing code must contain exactly six digits.');
+  }
+}
+
+function findOnlineDevice(
+  devices: AdbDevice[],
+  serial: string | undefined,
+  endpoints: string[],
+  targetHost: string | undefined,
+  initialOnline: Set<string>,
+): AdbDevice | undefined {
+  const online = devices.filter((device) => device.state === 'device');
+  if (serial) {
+    return online.find((device) => device.serial === serial);
+  }
+
+  for (const endpoint of endpoints) {
+    const exact = online.find((device) => device.serial === endpoint);
+    if (exact) {
+      return exact;
+    }
+  }
+
+  if (targetHost) {
+    const sameHost = online.find((device) =>
+      isNetworkSerial(device.serial) && endpointHost(device.serial) === targetHost
+    );
+    if (sameHost) {
+      return sameHost;
+    }
+  }
+
+  return online.find((device) =>
+    isNetworkSerial(device.serial) && !initialOnline.has(device.serial)
+  );
+}
+
+async function printSuccess(device: AdbDevice, deps: Dependencies): Promise<void> {
+  const current = await listDevices(deps);
+  const confirmed = current.devices.find((candidate) =>
+    candidate.serial === device.serial && candidate.state === 'device'
+  );
+  if (!confirmed) {
+    throw new Error(`${device.serial} disappeared before it could be confirmed`);
+  }
+  deps.out(`\nConnected:\n${current.output.trimEnd()}`);
+}
+
+async function tryConnect(
+  endpoint: string,
+  options: Options,
+  initialOnline: Set<string>,
+  targetHost: string | undefined,
+  deps: Dependencies,
+): Promise<AdbDevice | undefined> {
+  deps.out(`Connecting to ${endpoint}...`);
+  const result = await deps.adb(['connect', endpoint]);
+  const message = formatResult(result);
+  if (message) {
+    (result.success ? deps.out : deps.err)(message);
+  }
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const { devices } = await listDevices(deps);
+    const online = findOnlineDevice(
+      devices,
+      options.serial,
+      [endpoint],
+      targetHost,
+      initialOnline,
+    );
+    if (online) {
+      return online;
+    }
+    await deps.sleep(300);
+  }
+  return undefined;
+}
+
+export async function run(options: Options, deps: Dependencies): Promise<void> {
+  if (options.help) {
+    deps.out(help.trimEnd());
+    return;
+  }
+
+  const version = await deps.adb(['version']);
+  if (!version.success) {
+    if (version.code === 127 || version.stderr.includes('not found in PATH')) {
+      throw new Error(adbInstallHelp);
+    }
+    throw new Error(`Unable to run adb:\n${formatResult(version)}`);
+  }
+  const start = await deps.adb(['start-server']);
+  if (!start.success) {
+    throw new Error(`Unable to start the ADB server:\n${formatResult(start)}`);
+  }
+
+  const initial = await listDevices(deps);
+  const initialOnline = new Set(
+    initial.devices.filter((device) => device.state === 'device').map((device) =>
+      device.serial
+    ),
+  );
+
+  const explicitlyOnline = options.serial || options.connectEndpoint
+    ? findOnlineDevice(
+      initial.devices,
+      options.serial,
+      options.connectEndpoint ? [options.connectEndpoint] : [],
+      options.connectEndpoint ? endpointHost(options.connectEndpoint) : undefined,
+      new Set(),
+    )
+    : undefined;
+  const existingWireless = initial.devices.filter((device) =>
+    device.state === 'device' && isNetworkSerial(device.serial)
+  );
+  if (explicitlyOnline || (!options.serial && !options.connectEndpoint &&
+    existingWireless.length === 1)) {
+    await printSuccess(explicitlyOnline ?? existingWireless[0], deps);
+    return;
+  }
+
+  deps.out(
+    'On Android, open Developer options > Wireless debugging > ' +
+      'Pair device with pairing code, and keep that dialog open.',
+  );
+
+  let pairService: MdnsService | undefined = options.pairEndpoint
+    ? {
+      name: 'manual-pairing-endpoint',
+      type: '_adb-tls-pairing._tcp',
+      endpoint: options.pairEndpoint,
+    }
+    : undefined;
+  let paired = false;
+  let targetHost = pairService ? endpointHost(pairService.endpoint) : undefined;
+  let targetKey: string | undefined;
+  const attemptedConnect = new Set<string>();
+  let emptyPolls = 0;
+
+  while (true) {
+    const current = await listDevices(deps);
+    const knownEndpoints = [options.connectEndpoint].filter(
+      (endpoint): endpoint is string => Boolean(endpoint),
+    );
+    const alreadyOnline = findOnlineDevice(
+      current.devices,
+      options.serial,
+      knownEndpoints,
+      targetHost,
+      initialOnline,
+    );
+    if (alreadyOnline) {
+      await printSuccess(alreadyOnline, deps);
+      return;
+    }
+
+    const services = await discoverServices(deps);
+    const pairingServices = services.filter((service) =>
+      service.type === '_adb-tls-pairing._tcp'
+    );
+    let connectServices = services.filter((service) =>
+      service.type === '_adb-tls-connect._tcp'
+    );
+
+    if (targetHost) {
+      const sameHost = connectServices.filter((service) =>
+        endpointHost(service.endpoint) === targetHost
+      );
+      if (sameHost.length > 0) {
+        connectServices = sameHost;
+      }
+    }
+    if (targetKey) {
+      const sameDevice = connectServices.filter((service) =>
+        serviceDeviceKey(service.name) === targetKey
+      );
+      if (sameDevice.length > 0) {
+        connectServices = sameDevice;
+      }
+    }
+
+    const connectionCandidates: MdnsService[] = [];
+    if (options.connectEndpoint) {
+      connectionCandidates.push({
+        name: 'manual-connection-endpoint',
+        type: '_adb-tls-connect._tcp',
+        endpoint: options.connectEndpoint,
+      });
+    }
+    connectionCandidates.push(...connectServices);
+    const untriedConnections = connectionCandidates.filter((service, index) =>
+      !attemptedConnect.has(service.endpoint) &&
+      connectionCandidates.findIndex((candidate) =>
+          candidate.endpoint === service.endpoint
+        ) === index
+    );
+
+    if (untriedConnections.length > 0) {
+      const connection = selectService(untriedConnections, 'connection', deps);
+      attemptedConnect.add(connection.endpoint);
+      const online = await tryConnect(
+        connection.endpoint,
+        options,
+        initialOnline,
+        targetHost ?? endpointHost(connection.endpoint),
+        deps,
+      );
+      if (online) {
+        await printSuccess(online, deps);
+        return;
+      }
+    }
+
+    if (!paired) {
+      if (!pairService && pairingServices.length > 0) {
+        pairService = selectService(pairingServices, 'pairing', deps);
+        targetHost = endpointHost(pairService.endpoint);
+        targetKey = serviceDeviceKey(pairService.name);
+      }
+
+      if (pairService) {
+        const code = getPairingCode(deps);
+        deps.out(`Pairing with ${pairService.endpoint}...`);
+        const result = await deps.adb(['pair', pairService.endpoint, code]);
+        const message = formatResult(result);
+        if (message) {
+          (result.success ? deps.out : deps.err)(message);
+        }
+        if (result.success) {
+          paired = true;
+          attemptedConnect.clear();
+          deps.out(
+            'Pairing succeeded. Return to the main Wireless debugging screen; ' +
+              'waiting for its connection service...',
+          );
+        } else if (!options.pairEndpoint) {
+          pairService = undefined;
+        }
+      }
+    }
+
+    if (!pairService && pairingServices.length === 0) {
+      emptyPolls++;
+      if (emptyPolls === 1 || emptyPolls % 5 === 0) {
+        deps.out('Waiting for an ADB pairing advertisement...');
+      }
+      if (emptyPolls === 5) {
+        deps.out(
+          'Still nothing. Confirm both devices are on the same non-guest LAN, ' +
+            'or pass --pair HOST:PORT and --connect HOST:PORT.',
+        );
+      }
+    } else {
+      emptyPolls = 0;
+    }
+
+    await deps.sleep(options.pollMilliseconds);
+  }
+}
+
+const defaultDependencies: Dependencies = {
+  async adb(args) {
+    try {
+      const output = await new Deno.Command('adb', {
+        args,
+        stdout: 'piped',
+        stderr: 'piped',
+      }).output();
+      return {
+        success: output.success,
+        code: output.code,
+        stdout: decoder.decode(output.stdout),
+        stderr: decoder.decode(output.stderr),
+      };
+    } catch (error) {
+      if (error instanceof Deno.errors.NotFound) {
+        return {
+          success: false,
+          code: 127,
+          stdout: '',
+          stderr: 'adb was not found in PATH',
+        };
+      }
+      throw error;
+    }
+  },
+  prompt: globalThis.prompt,
+  sleep: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+  out: console.log,
+  err: console.error,
+};
+
+if (import.meta.main) {
+  try {
+    await run(parseArgs(Deno.args), defaultDependencies);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    Deno.exit(1);
+  }
+}
