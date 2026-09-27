@@ -1,0 +1,679 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+apply=false
+verbose=false
+include_stopped_containers=false
+include_journals=false
+all_reproducible=false
+clean_builds=true
+clean_docker_scope=true
+clean_system=true
+age=7d
+declare -a requested_build_roots=()
+
+function usage {
+    cat <<'EOF'
+Usage: cache-clean [OPTIONS]
+
+Remove cache files and reproducible build artifacts. The default mode is a
+seven-day dry run.
+
+Options:
+    --age DURATION                 Staleness threshold (default: 7d)
+                                   Units: s, m, h, d, w; e.g. 36h or 2w
+    --apply                        Perform the removals
+    --all-reproducible             Ignore age for generated build trees and
+                                   tool caches; prune all unused Docker images
+                                   and build cache
+    --build-root PATH              Scan an additional/alternate build root;
+                                   repeatable (defaults: ~/code, ~/.scratch,
+                                   and ~/REPOS)
+    --include-stopped-containers   Also prune stopped Docker containers
+    --include-journals             Also vacuum archived systemd journals
+    --no-builds                    Skip generated project build artifacts
+    --no-docker                    Skip Docker caches and images
+    --no-system                    Skip pacman and systemd journal caches
+    --verbose                      List individual filesystem candidates
+    -h, --help                     Show this help
+
+Scopes:
+    - stale files and symlinks below ${XDG_CACHE_HOME:-~/.cache}
+    - generated Rust, Flutter/Dart, Gradle, Node, CMake/Meson, and Python
+      environment trees below the configured build roots
+    - reproducible Gradle, Cargo, npm, Dart, and Bun caches when
+      --all-reproducible is passed
+    - pacman package-cache files
+    - archived systemd journals when --include-journals is passed
+    - Docker build cache and dangling images, or every unused image/build-cache
+      entry when --all-reproducible is passed
+
+Active build/cache paths are preserved. Docker volumes and running containers
+are never pruned. Stopped containers require --include-stopped-containers.
+EOF
+}
+
+function die {
+    echo "cache-clean: $*" >&2
+    exit 2
+}
+
+function duration_seconds {
+    local duration=$1
+    local amount unit multiplier
+
+    if [[ $duration =~ ^([1-9][0-9]*)([smhdw])$ ]]; then
+        amount=${BASH_REMATCH[1]}
+        unit=${BASH_REMATCH[2]}
+    elif [[ $duration =~ ^[1-9][0-9]*$ ]]; then
+        amount=$duration
+        unit=d
+    else
+        die "invalid duration '$duration' (use values such as 12h, 7d, or 2w)"
+    fi
+
+    case $unit in
+        s) multiplier=1 ;;
+        m) multiplier=60 ;;
+        h) multiplier=3600 ;;
+        d) multiplier=86400 ;;
+        w) multiplier=604800 ;;
+    esac
+
+    echo $((amount * multiplier))
+}
+
+while (($# > 0)); do
+    case $1 in
+        --age)
+            (($# >= 2)) || die "--age requires a duration"
+            age=$2
+            shift 2
+            ;;
+        --age=*)
+            age=${1#*=}
+            shift
+            ;;
+        --apply)
+            apply=true
+            shift
+            ;;
+        --all-reproducible)
+            all_reproducible=true
+            shift
+            ;;
+        --build-root)
+            (($# >= 2)) || die "--build-root requires a path"
+            requested_build_roots+=("$2")
+            shift 2
+            ;;
+        --build-root=*)
+            requested_build_roots+=("${1#*=}")
+            shift
+            ;;
+        --include-stopped-containers)
+            include_stopped_containers=true
+            shift
+            ;;
+        --include-journals)
+            include_journals=true
+            shift
+            ;;
+        --no-builds)
+            clean_builds=false
+            shift
+            ;;
+        --no-docker)
+            clean_docker_scope=false
+            shift
+            ;;
+        --no-system)
+            clean_system=false
+            shift
+            ;;
+        --verbose)
+            verbose=true
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            die "unknown option '$1'"
+            ;;
+    esac
+done
+
+age_seconds=$(duration_seconds "$age")
+now=$(date +%s)
+cutoff_epoch=$((now - age_seconds))
+
+temporary_directory=$(mktemp -d "${TMPDIR:-/tmp}/cache-clean.XXXXXXXX")
+trap 'rm -rf -- "$temporary_directory"' EXIT
+cutoff_file=$temporary_directory/cutoff
+touch --date="@$cutoff_epoch" "$cutoff_file"
+
+cache_root=${XDG_CACHE_HOME:-$HOME/.cache}
+docker_data_root=${CACHE_CLEAN_DOCKER_ROOT:-/var/lib/docker}
+filesystem_candidates=0
+filesystem_candidate_bytes=0
+build_candidates=0
+build_candidate_bytes=0
+in_use_candidates=0
+tracked_candidates=0
+
+declare -a build_roots=()
+declare -a active_paths=()
+declare -a active_working_directories=()
+declare -A seen_build_candidates=()
+
+function display_path {
+    local path=$1
+
+    if [[ $path == "$HOME" ]]; then
+        printf '~'
+    elif [[ $path == "$HOME"/* ]]; then
+        printf '%s/%s' '~' "${path#"$HOME"/}"
+    else
+        printf '%s' "$path"
+    fi
+}
+
+function human_bytes {
+    numfmt --to=iec-i --suffix=B -- "$1"
+}
+
+function allocated_bytes {
+    local path=$1
+    du -x -s -B1 -- "$path" 2>/dev/null | awk '{print $1}'
+}
+
+function canonical_directory {
+    local path=$1
+    local canonical
+
+    [[ -d $path ]] || return 1
+    canonical=$(realpath -e -- "$path") || return 1
+    [[ $canonical != / ]] || die "refusing filesystem root as a build root"
+    printf '%s\n' "$canonical"
+}
+
+function initialize_build_roots {
+    local requested canonical
+    local -a defaults=("$HOME/code" "$HOME/.scratch" "$HOME/REPOS")
+    local -A seen=()
+
+    if ((${#requested_build_roots[@]} > 0)); then
+        defaults=("${requested_build_roots[@]}")
+    fi
+
+    for requested in "${defaults[@]}"; do
+        canonical=$(canonical_directory "$requested") || continue
+        [[ -z ${seen[$canonical]+x} ]] || continue
+        seen[$canonical]=1
+        build_roots+=("$canonical")
+    done
+}
+
+function collect_active_paths {
+    local pid process_directory resolved cmdline
+
+    active_paths=()
+    active_working_directories=()
+
+    while IFS= read -r pid; do
+        process_directory=/proc/$pid
+        [[ -d $process_directory ]] || continue
+
+        resolved=$(readlink -f -- "$process_directory/cwd" 2>/dev/null) || resolved=
+        [[ $resolved == /* ]] && active_working_directories+=("$resolved")
+
+        resolved=$(readlink -f -- "$process_directory/exe" 2>/dev/null) || resolved=
+        [[ $resolved == /* ]] && active_paths+=("$resolved")
+
+        if [[ -r $process_directory/cmdline ]]; then
+            cmdline=$(tr '\0' '\n' < "$process_directory/cmdline" 2>/dev/null || true)
+            while IFS= read -r resolved; do
+                [[ $resolved == /* ]] && active_paths+=("$resolved")
+            done <<< "$cmdline"
+        fi
+    done < <(pgrep -u "$EUID" || true)
+}
+
+function tree_is_in_use {
+    local path=$1
+    local project=${path%/*}
+    local git_root
+    local active working_directory
+
+    git_root=$(git -C "$path" rev-parse --show-toplevel 2>/dev/null) || git_root=
+    [[ -z $git_root ]] || project=$git_root
+
+    for active in "${active_paths[@]}"; do
+        if [[ $active == "$path" || $active == "$path"/* ]]; then
+            return 0
+        fi
+    done
+
+    for working_directory in "${active_working_directories[@]}"; do
+        if [[ $working_directory == "$path" || $working_directory == "$path"/* ||
+              $working_directory == "$project" || $working_directory == "$project"/* ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+function tree_is_stale {
+    local path=$1
+    local newer_entry
+
+    newer_entry=$(find -P "$path" -xdev -newer "$cutoff_file" -print -quit)
+    [[ -z $newer_entry ]]
+}
+
+function tree_contains_tracked_files {
+    local path=$1
+    local git_root relative first_tracked
+
+    git_root=$(git -C "$path" rev-parse --show-toplevel 2>/dev/null) || return 1
+    relative=$(realpath --relative-to="$git_root" -- "$path") || return 1
+    first_tracked=$(git -C "$git_root" ls-files -- "$relative" | sed -n '1p')
+    [[ -n $first_tracked ]]
+}
+
+function path_is_below_build_root {
+    local path=$1
+    local root
+
+    for root in "${build_roots[@]}"; do
+        [[ $path == "$root"/* ]] && return 0
+    done
+    return 1
+}
+
+function add_build_candidate {
+    local path=$1
+    local canonical existing
+
+    [[ -d $path ]] || return 0
+    canonical=$(realpath -e -- "$path") || return 0
+    path_is_below_build_root "$canonical" || die "refusing build path outside configured roots: $canonical"
+
+    for existing in "${!seen_build_candidates[@]}"; do
+        [[ $canonical != "$existing"/* ]] || return 0
+        if [[ $existing == "$canonical"/* ]]; then
+            unset 'seen_build_candidates[$existing]'
+        fi
+    done
+    seen_build_candidates[$canonical]=1
+}
+
+function discover_build_artifacts {
+    local root marker parent basename
+
+    for root in "${build_roots[@]}"; do
+        while IFS= read -r -d '' marker; do
+            if [[ -d $marker ]]; then
+                parent=${marker%/*}
+                basename=${marker##*/}
+                case $basename in
+                    target)
+                        if [[ -f $parent/Cargo.toml || -f $marker/.rustc_info.json ]]; then
+                            add_build_candidate "$marker"
+                        fi
+                        ;;
+                    node_modules)
+                        [[ -f $parent/package.json ]] && add_build_candidate "$marker"
+                        ;;
+                    .dart_tool)
+                        [[ -f $parent/pubspec.yaml ]] && add_build_candidate "$marker"
+                        ;;
+                    .gradle)
+                        if [[ -f $parent/gradlew || -f $parent/settings.gradle || -f $parent/settings.gradle.kts ]]; then
+                            add_build_candidate "$marker"
+                        fi
+                        ;;
+                esac
+                continue
+            fi
+
+            parent=${marker%/*}
+            basename=${marker##*/}
+            case $basename in
+                pubspec.yaml)
+                    add_build_candidate "$parent/build"
+                    add_build_candidate "$parent/.dart_tool"
+                    ;;
+                pyvenv.cfg)
+                    case ${parent##*/} in
+                        .venv|venv) add_build_candidate "$parent" ;;
+                    esac
+                    ;;
+                CMakeCache.txt)
+                    add_build_candidate "$parent"
+                    ;;
+                coredata.dat)
+                    [[ ${parent##*/} == meson-private ]] && add_build_candidate "${parent%/*}"
+                    ;;
+                build.gradle|build.gradle.kts)
+                    add_build_candidate "$parent/build"
+                    ;;
+            esac
+        done < <(find -P "$root" -xdev \
+            \( -type d -name .git -prune \) -o \
+            \( -type d \( -name target -o -name node_modules -o -name .dart_tool -o -name .gradle \) -print0 -prune \) -o \
+            \( -type f \( -name pubspec.yaml -o -name pyvenv.cfg -o -name CMakeCache.txt -o -name coredata.dat -o -name build.gradle -o -name build.gradle.kts \) -print0 \))
+    done
+}
+
+function remove_build_tree_if_selected {
+    local path=$1
+    local size
+
+    $all_reproducible || tree_is_stale "$path" || return 0
+    size=$(allocated_bytes "$path")
+
+    if tree_contains_tracked_files "$path"; then
+        ((tracked_candidates += 1))
+        printf '  preserve-tracked %s (%s)\n' "$(display_path "$path")" "$(human_bytes "$size")"
+        return 0
+    fi
+
+    if tree_is_in_use "$path"; then
+        ((in_use_candidates += 1))
+        printf '  preserve-in-use %s (%s)\n' "$(display_path "$path")" "$(human_bytes "$size")"
+        return 0
+    fi
+
+    ((build_candidates += 1))
+    build_candidate_bytes=$((build_candidate_bytes + size))
+    printf '  %s %s (%s)\n' "$($apply && echo remove || echo would-remove)" "$(display_path "$path")" "$(human_bytes "$size")"
+
+    if $apply; then
+        rm -rf -- "$path"
+    fi
+}
+
+function remove_build_artifacts {
+    local path
+
+    discover_build_artifacts
+    # Cache/tool cleanup and discovery can be slow. Refresh process state here
+    # so a build that started after the initial snapshot is still protected.
+    collect_active_paths
+    while IFS= read -r -d '' path; do
+        remove_build_tree_if_selected "$path"
+    done < <(printf '%s\0' "${!seen_build_candidates[@]}" | sort -z)
+}
+
+function remove_cache_files {
+    local root=$1
+    local remove_all=${2:-false}
+    local manifest=$temporary_directory/cache-files
+    local path size count=0 bytes=0
+    local -a find_age=()
+
+    [[ -d $root ]] || return 0
+    root=$(realpath -e -- "$root") || return 0
+    [[ $root != / && $root != "$HOME" ]] || die "refusing unsafe cache root: $root"
+
+    if $remove_all && tree_is_in_use "$root"; then
+        size=$(allocated_bytes "$root")
+        ((in_use_candidates += 1))
+        printf '  preserve-in-use %s (%s)\n' "$(display_path "$root")" "$(human_bytes "$size")"
+        return 0
+    fi
+
+    if $remove_all; then
+        size=$(allocated_bytes "$root")
+        find -P "$root" -xdev -mindepth 1 -maxdepth 1 -print0 > "$manifest"
+        while IFS= read -r -d '' path; do
+            ((count += 1))
+            if $verbose; then
+                printf '  %s %s\n' "$($apply && echo remove || echo would-remove)" "$(display_path "$path")"
+            fi
+        done < "$manifest"
+
+        ((count > 0)) || size=0
+
+        filesystem_candidates=$((filesystem_candidates + count))
+        filesystem_candidate_bytes=$((filesystem_candidate_bytes + size))
+        if $apply && ((count > 0)); then
+            run_privileged xargs -0 -r rm -rf -- < "$manifest"
+        fi
+        printf '  %s top-level cache entry(s), %s below %s\n' \
+            "$count" "$(human_bytes "$size")" "$(display_path "$root")"
+        return 0
+    fi
+
+    find_age=(! -newer "$cutoff_file")
+    find -P "$root" -xdev \( -type f -o -type l \) "${find_age[@]}" -print0 > "$manifest"
+
+    while IFS= read -r -d '' path; do
+        ((count += 1))
+        if [[ -f $path ]]; then
+            size=$(stat -c '%b * %B' -- "$path" | awk '{print $1 * $3}')
+            bytes=$((bytes + size))
+        fi
+        if $verbose; then
+            printf '  %s %s\n' "$($apply && echo remove || echo would-remove)" "$(display_path "$path")"
+        fi
+    done < "$manifest"
+
+    filesystem_candidates=$((filesystem_candidates + count))
+    filesystem_candidate_bytes=$((filesystem_candidate_bytes + bytes))
+
+    if $apply && ((count > 0)); then
+        run_privileged xargs -0 -r rm -f -- < "$manifest"
+        while IFS= read -r -d '' path; do
+            rmdir -- "$path" 2>/dev/null || true
+        done < <(find -P "$root" -xdev -depth -mindepth 1 -type d -empty -print0)
+    fi
+
+    printf '  %s file(s), %s below %s\n' "$count" "$(human_bytes "$bytes")" "$(display_path "$root")"
+}
+
+function remove_tool_caches {
+    local root
+    local -a roots=(
+        "$HOME/.gradle/caches"
+        "$HOME/.gradle/wrapper/dists"
+        "$HOME/.cargo/registry/cache"
+        "$HOME/.cargo/registry/src"
+        "$HOME/.cargo/git"
+        "$HOME/.npm/_cacache"
+        "$HOME/.pub-cache"
+        "$HOME/.bun/install/cache"
+    )
+
+    for root in "${roots[@]}"; do
+        remove_cache_files "$root" true
+    done
+}
+
+function run_privileged {
+    if ((EUID == 0)); then
+        "$@"
+    else
+        sudo "$@"
+    fi
+}
+
+function remove_pacman_cache {
+    local package_cache=/var/cache/pacman/pkg
+    local manifest=$temporary_directory/pacman-files
+    local path count=0
+    local -a find_age=()
+
+    [[ -d $package_cache ]] || return 0
+    $all_reproducible || find_age=(! -newer "$cutoff_file")
+    find -P "$package_cache" -xdev -maxdepth 1 -type f "${find_age[@]}" -print0 > "$manifest"
+
+    while IFS= read -r -d '' path; do
+        ((count += 1))
+        if $verbose; then
+            printf '  %s %s\n' "$($apply && echo remove || echo would-remove)" "$path"
+        fi
+    done < "$manifest"
+
+    printf '  %s package-cache file(s)\n' "$count"
+    if $apply && ((count > 0)); then
+        run_privileged xargs -0 -r rm -f -- < "$manifest"
+    fi
+}
+
+function clean_journals {
+    command -v journalctl >/dev/null || return 0
+
+    if $apply; then
+        run_privileged journalctl --vacuum-time="${age_seconds}s"
+    else
+        printf '  would vacuum archived journals older than %s\n' "$age"
+        journalctl --disk-usage
+    fi
+}
+
+function docker_physical_bytes {
+    [[ -d $docker_data_root ]] || { echo 0; return; }
+    run_privileged du -x -s -B1 -- "$docker_data_root" 2>/dev/null | awk '{print $1}'
+}
+
+function clean_docker {
+    local before after
+    local -a age_filter=(--filter "until=${age_seconds}s")
+
+    if ! command -v docker >/dev/null || ! docker info >/dev/null 2>&1; then
+        echo "  unavailable"
+        return
+    fi
+
+    before=$(docker_physical_bytes)
+    printf '  physical Docker data before: %s\n' "$(human_bytes "$before")"
+
+    if $apply; then
+        if $include_stopped_containers; then
+            if $all_reproducible; then
+                docker container prune --force
+            else
+                docker container prune --force "${age_filter[@]}"
+            fi
+        fi
+
+        if $all_reproducible; then
+            docker builder prune --all --force
+            docker image prune --all --force
+        else
+            docker builder prune --force "${age_filter[@]}"
+            docker image prune --force "${age_filter[@]}"
+        fi
+        docker network prune --force "${age_filter[@]}"
+
+        after=$(docker_physical_bytes)
+        printf '  physical Docker data after:  %s\n' "$(human_bytes "$after")"
+        if ((before >= after)); then
+            printf '  physical Docker data freed:  %s\n' "$(human_bytes "$((before - after))")"
+        else
+            printf '  physical Docker data grew concurrently by: %s\n' "$(human_bytes "$((after - before))")"
+        fi
+    else
+        if $include_stopped_containers; then
+            if $all_reproducible; then
+                echo "  would prune all stopped Docker containers"
+            else
+                printf '  would prune stopped Docker containers older than %s\n' "$age"
+            fi
+        fi
+        if $all_reproducible; then
+            echo "  would prune all unused Docker images and build cache"
+        else
+            printf '  would prune Docker build cache and dangling images older than %s\n' "$age"
+        fi
+        printf '  would prune unused Docker networks older than %s\n' "$age"
+        docker system df
+    fi
+}
+
+initialize_build_roots
+collect_active_paths
+root_used_before=$(df --output=used -B1 / | tail -n 1 | tr -d ' ')
+
+if $apply; then
+    echo "Applying cleanup for items older than $age (cutoff: $(date --date="@$cutoff_epoch" --iso-8601=seconds))"
+else
+    echo "Dry run for items older than $age (cutoff: $(date --date="@$cutoff_epoch" --iso-8601=seconds))"
+    echo "Pass --apply to perform these removals."
+fi
+$all_reproducible && echo "All-reproducible mode is enabled."
+
+echo
+echo "User cache"
+remove_cache_files "$cache_root" false
+
+echo
+echo "Reproducible tool caches"
+if $all_reproducible; then
+    remove_tool_caches
+else
+    echo "  preserved (pass --all-reproducible to clean)"
+fi
+
+echo
+echo "Reproducible build artifacts"
+if $clean_builds; then
+    if ((${#build_roots[@]} == 0)); then
+        echo "  no build roots found"
+    else
+        remove_build_artifacts
+    fi
+else
+    echo "  skipped"
+fi
+printf '  %s selected build tree(s), %s; %s in-use and %s tracked tree(s) preserved\n' \
+    "$build_candidates" "$(human_bytes "$build_candidate_bytes")" \
+    "$in_use_candidates" "$tracked_candidates"
+
+echo
+echo "Pacman cache"
+if $clean_system; then
+    remove_pacman_cache
+else
+    echo "  skipped"
+fi
+
+echo
+echo "System journal"
+if ! $clean_system; then
+    echo "  skipped"
+elif $include_journals; then
+    clean_journals
+else
+    echo "  preserved (pass --include-journals to clean)"
+fi
+
+echo
+echo "Docker"
+if $clean_docker_scope; then
+    clean_docker
+else
+    echo "  skipped"
+fi
+
+root_used_after=$(df --output=used -B1 / | tail -n 1 | tr -d ' ')
+echo
+if $apply; then
+    printf 'Selected %s cache file(s) (%s) and %s build tree(s) (%s).\n' \
+        "$filesystem_candidates" "$(human_bytes "$filesystem_candidate_bytes")" \
+        "$build_candidates" "$(human_bytes "$build_candidate_bytes")"
+    if ((root_used_before >= root_used_after)); then
+        printf 'Root filesystem allocation decreased by %s.\n' "$(human_bytes "$((root_used_before - root_used_after))")"
+    else
+        printf 'Root filesystem allocation grew concurrently by %s.\n' "$(human_bytes "$((root_used_after - root_used_before))")"
+    fi
+else
+    printf 'Would select %s cache file(s) (%s) and %s build tree(s) (%s).\n' \
+        "$filesystem_candidates" "$(human_bytes "$filesystem_candidate_bytes")" \
+        "$build_candidates" "$(human_bytes "$build_candidate_bytes")"
+fi

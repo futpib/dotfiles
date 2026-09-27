@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+script=${1:-$(dirname "$0")/cache-clean}
+test_root=$(mktemp -d /tmp/cache-clean-test.XXXXXXXX)
+active_pid=
+active_worktree_pid=
+
+function cleanup {
+    local pid
+    for pid in "$active_pid" "$active_worktree_pid"; do
+        [[ -n $pid ]] || continue
+        kill "$pid" 2>/dev/null || true
+        wait "$pid" 2>/dev/null || true
+    done
+    rm -rf -- "$test_root"
+}
+
+trap cleanup EXIT
+
+function fail {
+    echo "FAIL: $*" >&2
+    exit 1
+}
+
+function assert_exists {
+    [[ -e $1 ]] || fail "expected $1 to exist"
+}
+
+function assert_missing {
+    [[ ! -e $1 ]] || fail "expected $1 to be removed"
+}
+
+function assert_contains {
+    local file=$1 expected=$2
+    grep -F -- "$expected" "$file" >/dev/null || fail "expected '$expected' in $file"
+}
+
+function assert_not_contains {
+    local file=$1 unexpected=$2
+    if grep -F -- "$unexpected" "$file" >/dev/null; then
+        fail "did not expect '$unexpected' in $file"
+    fi
+}
+
+home=$test_root/home
+mkdir -p "$home/.cache" "$home/code/stale/target/debug" "$home/code/fresh/target/debug"
+touch "$home/code/stale/Cargo.toml" "$home/code/stale/target/.rustc_info.json"
+touch "$home/code/fresh/Cargo.toml" "$home/code/fresh/target/.rustc_info.json"
+touch "$home/.cache/stale" "$home/.cache/fresh"
+touch --date='10 days ago' "$home/.cache/stale" "$home/code/stale/target/debug" \
+    "$home/code/stale/target/.rustc_info.json" "$home/code/stale/target"
+
+HOME=$home "$script" --age 7d --apply --no-docker --no-system > "$test_root/stale.out"
+assert_missing "$home/.cache/stale"
+assert_exists "$home/.cache/fresh"
+assert_missing "$home/code/stale/target"
+assert_exists "$home/code/fresh/target"
+
+mkdir -p "$home/code/all/target/debug" "$home/.npm/_cacache/content"
+touch "$home/code/all/Cargo.toml" "$home/code/all/target/.rustc_info.json"
+touch "$home/.npm/_cacache/content/object"
+HOME=$home "$script" --all-reproducible --apply --no-docker --no-system > "$test_root/all.out"
+assert_missing "$home/code/all/target"
+assert_missing "$home/.npm/_cacache/content/object"
+
+mkdir -p "$home/code/active/target/debug"
+touch "$home/code/active/Cargo.toml" "$home/code/active/target/.rustc_info.json"
+(cd "$home/code/active/target" && sleep 300) &
+active_pid=$!
+sleep 0.1
+HOME=$home "$script" --all-reproducible --apply --no-docker --no-system > "$test_root/active.out"
+kill "$active_pid" 2>/dev/null || true
+wait "$active_pid" 2>/dev/null || true
+active_pid=
+assert_exists "$home/code/active/target"
+assert_contains "$test_root/active.out" "preserve-in-use ~/code/active/target"
+
+active_worktree=$home/code/active-worktree
+mkdir -p "$active_worktree/app/build" "$active_worktree/rust"
+touch "$active_worktree/app/pubspec.yaml" "$active_worktree/app/build/output"
+git -C "$active_worktree" init -q
+(cd "$active_worktree/rust" && sleep 300) &
+active_worktree_pid=$!
+sleep 0.1
+HOME=$home "$script" --all-reproducible --apply --no-docker --no-system \
+    > "$test_root/active-worktree.out"
+kill "$active_worktree_pid" 2>/dev/null || true
+wait "$active_worktree_pid" 2>/dev/null || true
+active_worktree_pid=
+assert_exists "$active_worktree/app/build/output"
+assert_contains "$test_root/active-worktree.out" "preserve-in-use ~/code/active-worktree/app/build"
+
+nested_root=$test_root/nested-root
+mkdir -p "$nested_root/app/build/native"
+touch "$nested_root/app/pubspec.yaml" "$nested_root/app/build/native/CMakeCache.txt"
+HOME=$home "$script" --all-reproducible --build-root "$nested_root" \
+    --no-docker --no-system > "$test_root/nested.out"
+assert_contains "$test_root/nested.out" "would-remove $nested_root/app/build"
+assert_not_contains "$test_root/nested.out" "would-remove $nested_root/app/build/native"
+
+tracked_root=$test_root/tracked-root
+mkdir -p "$tracked_root/project/node_modules/fixture"
+touch "$tracked_root/project/package.json" "$tracked_root/project/node_modules/fixture/source.js"
+git -C "$tracked_root/project" init -q
+git -C "$tracked_root/project" add package.json node_modules/fixture/source.js
+HOME=$home "$script" --all-reproducible --apply --build-root "$tracked_root" \
+    --no-docker --no-system > "$test_root/tracked.out"
+assert_exists "$tracked_root/project/node_modules/fixture/source.js"
+assert_contains "$test_root/tracked.out" "preserve-tracked $tracked_root/project/node_modules"
+
+fake_bin=$test_root/bin
+docker_log=$test_root/docker.log
+docker_root=$test_root/docker-data
+mkdir -p "$fake_bin" "$docker_root"
+cat > "$fake_bin/docker" <<'EOF'
+#!/usr/bin/env bash
+if [[ $1 == info ]]; then
+    exit 0
+fi
+if [[ $1 == system && $2 == df ]]; then
+    echo "fake docker df"
+    exit 0
+fi
+printf '%s\n' "$*" >> "$DOCKER_LOG"
+EOF
+chmod +x "$fake_bin/docker"
+
+PATH="$fake_bin:$PATH" HOME=$home DOCKER_LOG=$docker_log \
+    CACHE_CLEAN_DOCKER_ROOT=$docker_root "$script" --all-reproducible \
+    --include-stopped-containers --apply --no-builds --no-system > "$test_root/docker.out"
+assert_contains "$docker_log" "container prune --force"
+assert_contains "$docker_log" "builder prune --all --force"
+assert_contains "$docker_log" "image prune --all --force"
+assert_contains "$docker_log" "network prune --force --filter until=604800s"
+assert_contains "$test_root/docker.out" "Selected 0 cache file(s) (0B)"
+
+echo "cache-clean tests passed"
