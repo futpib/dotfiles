@@ -29,7 +29,7 @@ async function main() {
         notificationId, 
         '--app-name',
         'translate-clipboard',
-        'Done',
+        'Translated',
         [
             en,
             ru,
