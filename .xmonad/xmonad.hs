@@ -2,6 +2,7 @@
 import XMonad
 import qualified XMonad.StackSet as W
 import qualified Data.Map as M
+import Graphics.X11.ExtraTypes.XF86 (xF86XK_ScreenSaver)
 
 import XMonad.Util.Run
 import XMonad.Util.Themes
@@ -79,6 +80,8 @@ keys' conf@(XConfig {XMonad.modMask = modMask}) = M.fromList $
     , ((modMask,               xK_Print ), spawn "setxkbmap -option grab:break_actions" >> spawnXdotool "key XF86Ungrab")
     , ((modMask,               xK_t     ), spawnTranslateClipboard)
     , ((modMask,               xK_F4    ), kill)
+    , ((controlMask .|. altMask, xK_l), spawn "loginctl lock-session")
+    , ((0, xF86XK_ScreenSaver), spawn "loginctl lock-session")
 
     --layouts
     , ((modMask,               xK_e     ), sendMessage NextLayout)

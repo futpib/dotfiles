@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply saved KDE appearance, scaling and input settings to a standalone X11 session."""
+"""Apply saved KDE appearance, input and screen lock settings to a standalone X11 session."""
 
 import argparse
 import ctypes
@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import re
 import select
+import shutil
 import signal
 import socket
 import subprocess
@@ -19,6 +20,7 @@ import time
 
 
 UNIT = "xmonad-kde-settings.service"
+LOCK_UNIT = "xmonad-screen-lock.service"
 
 
 class SettingsError(Exception):
@@ -118,7 +120,7 @@ class Preferences:
 
     def files(self):
         names = ("kdeglobals", "kwinrc", "kwinoutputconfig.json", "kcminputrc", "kcmfonts",
-                 "kxkbrc", "touchpadxlibinputrc")
+                 "kxkbrc", "touchpadxlibinputrc", "kscreenlockerrc")
         return [directory / name for directory in self.dirs for name in names] + [
             Path.home() / ".xsettingsd", self.home / "xsettingsd/xsettingsd.conf",
         ]
@@ -580,6 +582,48 @@ class InputSettings:
         return report
 
 
+class ScreenLockSettings:
+    def __init__(self, preferences):
+        self.preferences = preferences
+        self.previous = None
+
+    def apply(self):
+        read = self.preferences.read
+        autolock = boolean(read("kscreenlockerrc", "Daemon", "Autolock", "true"))
+        minutes = float(read("kscreenlockerrc", "Daemon", "Timeout", "5"))
+        if not math.isfinite(minutes) or minutes > 32767 / 60:
+            raise SettingsError(f"Invalid KDE screen lock timeout: {minutes!r}")
+        seconds = max(1, round(minutes * 60)) if autolock and minutes > 0 else 0
+        if seconds != self.previous:
+            run(["xset", "s", str(seconds), "0"])
+            self.previous = seconds
+        return {
+            "service": LOCK_UNIT, "autolock": autolock, "timeout_seconds": seconds,
+            "lock_on_suspend": boolean(read("kscreenlockerrc", "Daemon", "LockOnResume", "true")),
+        }
+
+
+def screen_lock_daemon():
+    missing = [name for name in ("xss-lock", "i3lock") if not shutil.which(name)]
+    if missing:
+        raise SettingsError("Screen locking requires: sudo pacman -S --needed i3lock xss-lock")
+    session = os.environ.get("XDG_SESSION_ID")
+    if not session or run(["loginctl", "show-session", session, "-p", "Type", "--value"]).strip() != "x11":
+        raise SettingsError("Start screen locking from the xmonad X11 session with --start")
+    os.execvp("xss-lock", ["xss-lock", "--session", session, "--transfer-sleep-lock", "--",
+                          str(Path(__file__).absolute()), "--locker"])
+
+
+def locker():
+    if "XSS_SLEEP_LOCK_FD" in os.environ:
+        try:
+            if not boolean(Preferences().read("kscreenlockerrc", "Daemon", "LockOnResume", "true")):
+                return
+        except (OSError, ValueError, SettingsError, subprocess.SubprocessError) as error:
+            print(f"Cannot read KDE suspend preference; locking: {error}", file=sys.stderr, flush=True)
+    os.execvp("i3lock", ["i3lock", "--nofork", "--color", "000000", "--show-keyboard-layout"])
+
+
 class ScriptUpdate:
     def __init__(self):
         self.path = Path(__file__).absolute()
@@ -629,6 +673,7 @@ def watch(directory):
         update = ScriptUpdate()
         preferences = Preferences()
         inputs = InputSettings(preferences)
+        screen_lock = ScreenLockSettings(preferences)
         applied = {}
         cursors = None
         daemon = None
@@ -682,6 +727,7 @@ def watch(directory):
                     else:
                         first = False
                     applied["input"] = inputs.poll()
+                    applied["screen_lock"] = screen_lock.apply()
                     atomic_write(directory / "status.json", json.dumps(applied, indent=2) + "\n")
                     if first:
                         notify_ready()
@@ -768,9 +814,10 @@ def start(directory, restart=False):
         names = (
             "HOME", "DISPLAY", "XAUTHORITY", "PATH", "LANG", "LC_ALL", "LC_CTYPE",
             "XDG_CONFIG_HOME", "XDG_CONFIG_DIRS", "XDG_DATA_HOME", "XDG_DATA_DIRS", "XDG_STATE_HOME",
-            "XCURSOR_PATH", "DBUS_SESSION_BUS_ADDRESS",
+            "XCURSOR_PATH", "DBUS_SESSION_BUS_ADDRESS", "XDG_SESSION_ID", "XDG_SESSION_TYPE",
         )
         environment = service / "environment.json"
+        old_environment = json.loads(environment.read_text()) if environment.exists() else {}
         contents = json.dumps({key: os.environ.get(key) for key in names})
         if managed_pid and (not environment.exists() or environment.read_text() != contents):
             restart = True
@@ -780,6 +827,14 @@ def start(directory, restart=False):
             run(["systemctl", "--user", "is-active", "--quiet", UNIT])
         except (SettingsError, subprocess.TimeoutExpired) as error:
             raise SettingsError(f"{error}\nLogs: journalctl --user -u {UNIT} -n 50") from error
+        if old_environment and any(old_environment.get(key) != os.environ.get(key)
+                                   for key in ("DISPLAY", "XAUTHORITY", "XDG_SESSION_ID")):
+            stop_units(LOCK_UNIT)
+        try:
+            run(["systemctl", "--user", "start", LOCK_UNIT], timeout=30)
+            run(["systemctl", "--user", "is-active", "--quiet", LOCK_UNIT])
+        except (SettingsError, subprocess.TimeoutExpired) as error:
+            raise SettingsError(f"{error}\nLogs: journalctl --user -u {LOCK_UNIT} -n 50") from error
 
 
 def status(directory):
@@ -797,16 +852,18 @@ def status(directory):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--start", action="store_true", help="start the service and wait until settings are applied")
+    mode.add_argument("--start", action="store_true", help="start settings and screen lock services")
     mode.add_argument("--restart", action="store_true", help="restart the service and reapply settings")
     mode.add_argument("--stop", action="store_true", help="stop the watcher without resetting applied settings")
     mode.add_argument("--watch", action="store_true", help="run the settings watcher in the foreground")
     mode.add_argument("--status", action="store_true", help="print the last applied settings")
     mode.add_argument("--check-display", action="store_true", help=argparse.SUPPRESS)
+    mode.add_argument("--screen-lock-daemon", action="store_true", help=argparse.SUPPRESS)
+    mode.add_argument("--locker", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--environment", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.environment:
-        if not (args.watch or args.check_display):
+        if not (args.watch or args.check_display or args.screen_lock_daemon):
             parser.error("--environment is only used by the service")
         for key, value in json.loads(args.environment.read_text()).items():
             if value is None:
@@ -815,6 +872,11 @@ def main():
                 os.environ[key] = value
     if args.stop:
         stop()
+        return
+    if args.screen_lock_daemon:
+        screen_lock_daemon()
+    if args.locker:
+        locker()
         return
     directory = runtime_dir()
     if args.start or args.restart:

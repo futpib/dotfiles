@@ -95,6 +95,7 @@
 !.config/systemd/user/clipcat.service
 !.config/systemd/user/dunst.service
 !.config/systemd/user/xmonad-kde-settings.service
+!.config/systemd/user/xmonad-screen-lock.service
 
 !.config/fontconfig
 .config/fontconfig/*
