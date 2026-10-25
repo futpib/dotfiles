@@ -1,5 +1,5 @@
 
-import XMonad
+import XMonad hiding (spawn)
 import qualified XMonad.StackSet as W
 import qualified Data.Map as M
 import Graphics.X11.ExtraTypes.XF86 (xF86XK_ScreenSaver)
@@ -172,3 +172,10 @@ spawnXdotool s = spawn $ "xdotool " ++ s
 
 spawnTranslateClipboard :: X ()
 spawnTranslateClipboard = spawn "translate-clipboard"
+
+spawn :: String -> X ()
+spawn command = safeSpawn "systemd-run"
+    [ "--user", "--scope", "--quiet", "--collect", "--expand-environment=no"
+    , "--slice=app.slice", "--property=PartOf=xmonad-session.target"
+    , "--", "/bin/sh", "-c", command
+    ]

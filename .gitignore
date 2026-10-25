@@ -87,11 +87,8 @@
 .config/systemd/*
 !.config/systemd/user
 .config/systemd/user/*
-!.config/systemd/user/plasma-xmonad.service
-!.config/systemd/user/plasma-kwin_x11.service
-!.config/systemd/user/plasma-workspace.target.wants
-.config/systemd/user/plasma-workspace.target.wants/*
-!.config/systemd/user/plasma-workspace.target.wants/plasma-xmonad.service
+!.config/systemd/user/xmonad.service
+!.config/systemd/user/xmonad-session.target
 !.config/systemd/user/clipcat.service
 !.config/systemd/user/dunst.service
 !.config/systemd/user/xmonad-kde-settings.service
@@ -109,6 +106,8 @@
 .local/bin/*
 !.local/bin/lvcache
 !.local/bin/xmonad-kde-settings
+!.local/bin/xmonad
+!.local/bin/xmonad-session
 !.local/bin/ffmpeg-mute
 !.local/bin/chrome-headless
 !.local/bin/emacsclient-wrapper

@@ -1,5 +1,6 @@
 [Unit]
 Description=KDE settings for xmonad
+PartOf=xmonad-session.target
 StartLimitIntervalSec=30
 StartLimitBurst=5
 

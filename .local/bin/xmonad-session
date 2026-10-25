@@ -1,0 +1,135 @@
+#!/usr/bin/env python3
+"""Keep the X11 login alive while systemd supervises the xmonad session."""
+
+import argparse
+import fcntl
+import json
+import os
+from pathlib import Path
+import signal
+import subprocess
+import sys
+import time
+
+
+TARGET = "xmonad-session.target"
+UNIT = "xmonad.service"
+HELPERS = ("xmonad-kde-settings.service", "xmonad-screen-lock.service")
+MANAGER_ENVIRONMENT = ("INVOCATION_ID", "JOURNAL_STREAM", "SYSTEMD_EXEC_PID", "NOTIFY_SOCKET")
+
+
+def run(args, **kwargs):
+    return subprocess.run(args, check=True, text=True, timeout=kwargs.pop("timeout", 30), **kwargs)
+
+
+def control(*args, **kwargs):
+    return run(["systemctl", "--user", *args], **kwargs)
+
+
+def properties(unit):
+    result = control("show", unit, "-p", "ActiveState", "-p", "SubState", "-p", "Job",
+                     stdout=subprocess.PIPE).stdout
+    return dict(line.split("=", 1) for line in result.splitlines() if "=" in line)
+
+
+def directory():
+    base = os.environ.get("XDG_RUNTIME_DIR")
+    if not base:
+        raise RuntimeError("XDG_RUNTIME_DIR is unset")
+    path = Path(base) / "xmonad-session"
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    return path
+
+
+def check_session():
+    session = os.environ.get("XDG_SESSION_ID")
+    if not session or not os.environ.get("DISPLAY"):
+        raise RuntimeError("Start xmonad from an X11 login session")
+    kind = run(["loginctl", "show-session", session, "-p", "Type", "--value"],
+               stdout=subprocess.PIPE).stdout.strip()
+    if kind != "x11":
+        raise RuntimeError("The xmonad session requires a native X11 login")
+    run(["xrandr", "--query"], stdout=subprocess.DEVNULL)
+
+
+def window_manager():
+    saved = json.loads((directory() / "environment.json").read_text())
+    manager = {key: os.environ[key] for key in MANAGER_ENVIRONMENT if key in os.environ}
+    os.environ.clear()
+    os.environ.update(saved)
+    os.environ.update(manager)
+    os.environ["XMONAD_SYSTEMD_WM"] = "1"
+    check_session()
+    run(["/usr/bin/xmonad", "--recompile"], timeout=120)
+    os.execv("/usr/bin/xmonad", ["xmonad"])
+
+
+def session():
+    check_session()
+    path = directory()
+    with (path / "lock").open("a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise RuntimeError("An xmonad session launcher is already running")
+        control("daemon-reload")
+        state = properties(UNIT).get("ActiveState")
+        if state in ("active", "activating", "reloading"):
+            raise RuntimeError("xmonad.service is already running")
+        if state == "failed":
+            control("reset-failed", UNIT)
+        stopping = False
+
+        def stop(*_):
+            nonlocal stopping
+            stopping = True
+
+        for sig in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
+            signal.signal(sig, stop)
+        environment = path / "environment.json"
+        pending = path / "environment.tmp"
+        old_mask = os.umask(0o077)
+        try:
+            pending.write_text(json.dumps({key: value for key, value in os.environ.items()
+                                          if key not in MANAGER_ENVIRONMENT}))
+            pending.replace(environment)
+        finally:
+            os.umask(old_mask)
+        try:
+            run([str(Path.home() / ".local/bin/xmonad-kde-settings"), "--start"], timeout=60)
+            if stopping:
+                return
+            control("start", TARGET, timeout=150)
+            print("xmonad session started; logs: journalctl --user -u xmonad.service", flush=True)
+            while not stopping:
+                if properties(TARGET).get("ActiveState") not in ("active", "activating"):
+                    break
+                state = properties(UNIT)
+                if state.get("ActiveState") in ("inactive", "failed") and state.get("Job") in (None, "", "0"):
+                    if state["ActiveState"] == "failed":
+                        raise RuntimeError("xmonad.service failed; see journalctl --user -u xmonad.service")
+                    break
+                time.sleep(0.5)
+        finally:
+            try:
+                control("stop", TARGET, UNIT, *HELPERS, timeout=60)
+            finally:
+                environment.unlink(missing_ok=True)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--wm", action="store_true", help=argparse.SUPPRESS)
+    args = parser.parse_args()
+    if args.wm:
+        window_manager()
+    else:
+        session()
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+        print(f"xmonad-session: {error}", file=sys.stderr)
+        sys.exit(1)

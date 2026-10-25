@@ -1,0 +1,18 @@
+[Unit]
+Description=XMonad window manager
+PartOf=xmonad-session.target
+After=xmonad-kde-settings.service
+StartLimitIntervalSec=30
+StartLimitBurst=5
+
+[Service]
+Type=exec
+ExecStart=%h/.local/bin/xmonad-session --wm
+Restart=on-failure
+RestartMode=direct
+RestartSec=1
+TimeoutStopSec=10
+Slice=session.slice
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=xmonad

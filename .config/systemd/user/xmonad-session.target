@@ -1,0 +1,5 @@
+[Unit]
+Description=XMonad X11 session
+BindsTo=graphical-session.target
+Wants=xmonad.service xmonad-kde-settings.service xmonad-screen-lock.service
+After=graphical-session-pre.target xmonad.service xmonad-kde-settings.service xmonad-screen-lock.service

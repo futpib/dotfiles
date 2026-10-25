@@ -1,0 +1,7 @@
+#!/bin/sh
+
+if [ "$#" -gt 0 ] || [ "${XMONAD_SYSTEMD_WM:-}" = 1 ]; then
+    exec /usr/bin/xmonad "$@"
+fi
+
+exec "$HOME/.local/bin/xmonad-session"
