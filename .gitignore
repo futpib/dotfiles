@@ -26,7 +26,6 @@
 !.xmonad/
 .xmonad/*
 !.xmonad/xmonad.hs
-!.xmonad/README.md
 
 !.config
 .config/*

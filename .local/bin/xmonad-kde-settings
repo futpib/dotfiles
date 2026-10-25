@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Apply saved KDE appearance and uniform scaling to a standalone X11 session."""
+"""Apply saved KDE appearance, scaling and input settings to a standalone X11 session."""
 
 import argparse
+import ctypes
 import fcntl
 import hashlib
 import json
@@ -21,9 +22,15 @@ class SettingsError(Exception):
 
 
 def run(args, **kwargs):
-    return subprocess.run(
-        args, check=True, text=True, capture_output=True, timeout=10, **kwargs
-    ).stdout
+    try:
+        return subprocess.run(
+            args, check=True, text=True, capture_output=True, timeout=10, **kwargs
+        ).stdout
+    except subprocess.CalledProcessError as error:
+        detail = (error.stderr or error.stdout or "").strip()
+        raise SettingsError(
+            f"{args[0]} failed (exit {error.returncode})" + (f": {detail}" if detail else "")
+        ) from error
 
 
 def scale_number(value):
@@ -95,16 +102,19 @@ class Preferences:
         self.cache = {}
 
     def read(self, filename, group, key, default=""):
-        cache_key = filename, group, key, default
+        groups = (group,) if isinstance(group, str) else tuple(group)
+        cache_key = filename, groups, key, default
         if cache_key not in self.cache:
             self.cache[cache_key] = run([
-                "kreadconfig6", "--file", filename, "--group", group,
+                "kreadconfig6", "--file", filename,
+                *[arg for group in groups for arg in ("--group", group)],
                 "--key", key, "--default", str(default),
             ]).rstrip("\n")
         return self.cache[cache_key]
 
     def files(self):
-        names = ("kdeglobals", "kwinrc", "kwinoutputconfig.json", "kcminputrc", "kcmfonts")
+        names = ("kdeglobals", "kwinrc", "kwinoutputconfig.json", "kcminputrc", "kcmfonts",
+                 "kxkbrc", "touchpadxlibinputrc")
         return [directory / name for directory in self.dirs for name in names] + [
             Path.home() / ".xsettingsd", self.home / "xsettingsd/xsettingsd.conf",
         ]
@@ -135,7 +145,10 @@ class Preferences:
         )
         dpi = round(96 * scale)
         cursor_theme = self.read("kcminputrc", "Mouse", "cursorTheme", "breeze_cursors")
-        cursor_size = max(1, round(int(self.read("kcminputrc", "Mouse", "cursorSize", "24")) * scale))
+        cursor_base_size = int(self.read("kcminputrc", "Mouse", "cursorSize", "24"))
+        if cursor_base_size < 0:
+            raise SettingsError(f"Invalid KDE cursor size: {cursor_base_size}")
+        cursor_size = max(1, round((cursor_base_size or 24) * scale))
         hint = self.read("kdeglobals", "General", "XftHintStyle", "hintslight")
         if hint not in ("hintnone", "hintslight", "hintmedium", "hintfull"):
             raise SettingsError(f"Invalid KDE font hint style: {hint!r}")
@@ -166,6 +179,8 @@ class Preferences:
         lines.extend(f"{key} {json.dumps(value, ensure_ascii=False)}" for key, value in settings.items())
         return {
             "scale": scale, "source": source, "dpi": dpi,
+            "cursor_theme": cursor_theme, "cursor_size": cursor_size,
+            "cursor_base_size": cursor_base_size,
             "resources": "".join(f"{key}: {value}\n" for key, value in resources.items()),
             "xsettings": "\n".join(lines) + "\n",
         }
@@ -197,12 +212,317 @@ def atomic_write(path, contents):
     temporary.replace(path)
 
 
+class CursorTheme:
+    def __init__(self):
+        x11 = ctypes.CDLL("libX11.so.6")
+        xcursor = ctypes.CDLL("libXcursor.so.1")
+        xfixes = ctypes.CDLL("libXfixes.so.3")
+        pointer, integer, xid, string = ctypes.c_void_p, ctypes.c_int, ctypes.c_ulong, ctypes.c_char_p
+
+        def bind(library, name, result, *arguments):
+            function = getattr(library, name)
+            function.restype = result
+            function.argtypes = arguments
+            return function
+
+        open_display = bind(x11, "XOpenDisplay", pointer, string)
+        self.close_display = bind(x11, "XCloseDisplay", integer, pointer)
+        self.root_window = bind(x11, "XDefaultRootWindow", xid, pointer)
+        self.define_cursor = bind(x11, "XDefineCursor", integer, pointer, xid, xid)
+        self.free_cursor = bind(x11, "XFreeCursor", integer, pointer, xid)
+        self.sync = bind(x11, "XSync", integer, pointer, integer)
+        self.set_theme = bind(xcursor, "XcursorSetTheme", integer, pointer, string)
+        self.set_size = bind(xcursor, "XcursorSetDefaultSize", integer, pointer, integer)
+        self.load_cursor = bind(xcursor, "XcursorLibraryLoadCursor", xid, pointer, string)
+        query_extension = bind(xfixes, "XFixesQueryExtension", integer, pointer,
+                               ctypes.POINTER(integer), ctypes.POINTER(integer))
+        self.replace_cursor = bind(xfixes, "XFixesChangeCursorByName", None, pointer, xid, string)
+        self.display = open_display(None)
+        if not self.display:
+            raise SettingsError("Cannot open the X11 display to apply the cursor")
+        self.can_replace = query_extension(self.display, ctypes.byref(integer()), ctypes.byref(integer()))
+
+    def apply(self, theme, size):
+        self.set_theme(self.display, (theme or "default").encode())
+        self.set_size(self.display, size)
+        names = (
+            "left_ptr default arrow top_left_arrow left_arrow up_arrow center_ptr "
+            "cross crosshair wait watch ibeam text xterm "
+            "size_ver ns-resize v_double_arrow sb_v_double_arrow "
+            "size_hor ew-resize h_double_arrow sb_h_double_arrow "
+            "size_bdiag nesw-resize top_right_corner bottom_left_corner "
+            "size_fdiag nwse-resize top_left_corner bottom_right_corner "
+            "size_all fleur move split_v row-resize split_h col-resize "
+            "pointing_hand pointer hand1 hand2 forbidden not-allowed crossed_circle circle "
+            "whats_this help question_arrow left_ptr_watch half-busy progress "
+            "openhand grab closedhand grabbing dnd-copy copy dnd-move dnd-link link"
+        ).split()
+        for name in names:
+            cursor = self.load_cursor(self.display, name.encode())
+            if not cursor:
+                if name == "left_ptr":
+                    raise SettingsError(f"Cannot load the pointer from cursor theme {theme!r}")
+                continue
+            try:
+                if self.can_replace:
+                    self.replace_cursor(self.display, cursor, name.encode())
+            finally:
+                self.free_cursor(self.display, cursor)
+        cursor = self.load_cursor(self.display, b"left_ptr")
+        try:
+            self.define_cursor(self.display, self.root_window(self.display), cursor)
+        finally:
+            self.free_cursor(self.display, cursor)
+        self.sync(self.display, False)
+
+    def close(self):
+        self.close_display(self.display)
+
+
 def notify_kde():
     for change in (0, 2, 4, 5):
         run(["dbus-send", "--session", "--type=signal", "/KGlobalSettings",
              "org.kde.KGlobalSettings.notifyChange", f"int32:{change}", "int32:0"])
     run(["dbus-send", "--session", "--type=signal", "/KDEPlatformTheme",
          "org.kde.KDEPlatformTheme.refreshFonts"])
+
+
+def boolean(value):
+    if str(value).lower() not in ("true", "false", "1", "0"):
+        raise SettingsError(f"Invalid KDE boolean: {value!r}")
+    return str(value).lower() in ("true", "1")
+
+
+class InputSettings:
+    boolean_properties = {
+        "LeftHanded": ("libinput Left Handed Enabled", "XLbInptLeftHanded"),
+        "NaturalScroll": ("libinput Natural Scrolling Enabled", "XLbInptNaturalScroll"),
+        "MiddleButtonEmulation": ("libinput Middle Emulation Enabled", "XLbInptMiddleEmulation"),
+        "DisableWhileTyping": ("libinput Disable While Typing Enabled", ""),
+        "TapToClick": ("libinput Tapping Enabled", ""),
+        "TapAndDrag": ("libinput Tapping Drag Enabled", ""),
+        "TapDragLock": ("libinput Tapping Drag Lock Enabled", ""),
+        "ScrollButtonLock": ("libinput Button Scrolling Button Lock Enabled", ""),
+    }
+
+    def __init__(self, preferences):
+        self.preferences = preferences
+        self.previous = None
+        self.original = {}
+        self.keyboard_previous = None
+        self.keyboard_report = ({}, [])
+        self.report = {"devices": [], "keyboard": {}, "warnings": [], "errors": []}
+
+    def device(self, device_id):
+        text = run(["xinput", "list-props", device_id])
+        properties = {match[1]: match[2].split(", ") for match in re.finditer(
+            r"^\s+(.+) \(\d+\):\s*(.*)$", text, re.M
+        )}
+        if "Device Product ID" not in properties or not any(
+                prop in properties for prop in ("libinput Accel Speed", "libinput Tapping Enabled",
+                                                "libinput Natural Scrolling Enabled")):
+            return None
+        name = text.splitlines()[0][8:-2]
+        vendor, product = properties["Device Product ID"]
+        identity = (device_id, name, vendor, product, tuple(properties.get("Device Node", [])))
+        touchpad = "libinput Tapping Enabled" in properties
+        group = ("Libinput", vendor, product, name)
+        original = self.original.setdefault(identity, {})
+        desired = {}
+        warnings = []
+
+        def saved(key, legacy="", touchpad_key=None):
+            value = self.preferences.read("kcminputrc", group, key)
+            if value:
+                return value
+            if touchpad:
+                key = touchpad_key or key[0].lower() + key[1:]
+                return self.preferences.read("touchpadxlibinputrc", name, key)
+            return self.preferences.read("kcminputrc", "Mouse", legacy) if legacy else ""
+
+        def put(prop, values, available=None):
+            if prop not in properties:
+                warnings.append(f"{name}: {prop} is unsupported")
+                return
+            if available and any(value and not int(supported) for value, supported in
+                                 zip(values, properties.get(available, []))):
+                warnings.append(f"{name}: requested {prop} mode is unsupported")
+                return
+            desired[prop] = [str(value) for value in values]
+
+        for key, (prop, legacy) in self.boolean_properties.items():
+            value = saved(key, legacy, "middleEmulation" if key == "MiddleButtonEmulation" else None)
+            if value:
+                put(prop, [int(boolean(value))])
+        value = saved("PointerAcceleration", "XLbInptPointerAcceleration")
+        if value:
+            speed = float(value)
+            if not math.isfinite(speed) or not -1 <= speed <= 1:
+                raise SettingsError(f"{name}: invalid pointer acceleration {value!r}")
+            put("libinput Accel Speed", [speed])
+        profile = self.preferences.read("kcminputrc", group, "PointerAccelerationProfile")
+        if not profile:
+            flat = saved("PointerAccelerationProfileFlat", "XLbInptAccelProfileFlat")
+            if flat:
+                profile = "1" if boolean(flat) else "2"
+        if profile:
+            prop = "libinput Accel Profile Enabled"
+            count = len(properties.get(prop, [0, 0, 0]))
+            if int(profile) not in (1, 2, 4) or (int(profile) == 4 and count < 3):
+                raise SettingsError(f"{name}: unsupported acceleration profile {profile!r}")
+            put(prop, [int(int(profile) == flag) for flag in (2, 1, 4)[:count]],
+                available="libinput Accel Profiles Available")
+        for key, prop, available, flags, old_keys in (
+            ("ScrollMethod", "libinput Scroll Method Enabled", "libinput Scroll Methods Available",
+             (1, 2, 4), ("scrollTwoFinger", "scrollEdge", "scrollOnButtonDown")),
+            ("ClickMethod", "libinput Click Method Enabled", "libinput Click Methods Available",
+             (1, 2), ("clickMethodAreas", "clickMethodClickfinger")),
+        ):
+            value = self.preferences.read("kcminputrc", group, key)
+            if value:
+                if int(value) not in (0, *flags):
+                    raise SettingsError(f"{name}: invalid {key}: {value!r}")
+                put(prop, [int(int(value) == flag) for flag in flags], available=available)
+            elif touchpad:
+                values = [self.preferences.read("touchpadxlibinputrc", name, key) for key in old_keys]
+                if any(values):
+                    put(prop, [int(boolean(value or "false")) for value in values], available=available)
+            elif key == "ScrollMethod":
+                value = self.preferences.read("kcminputrc", "Mouse", "XLbInptScrollOnButtonDown")
+                if value:
+                    put(prop, [0, 0, int(boolean(value))], available=available)
+        value = saved("LmrTapButtonMap")
+        if value:
+            put("libinput Tapping Button Mapping Enabled", [int(not boolean(value)), int(boolean(value))])
+        if touchpad:
+            value = self.preferences.read("touchpadxlibinputrc", name, "horizontalScrolling")
+            if value:
+                put("libinput Horizontal Scroll Enabled", [int(boolean(value))])
+        value = saved("ScrollButton")
+        if value:
+            button = int(value)
+            if self.preferences.read("kcminputrc", group, "ScrollButton"):
+                button = {0: 0, 272: 1, 273: 3, 274: 2, 275: 8, 276: 9,
+                          277: 10, 278: 11, 279: 12}.get(button)
+            if button is None or not 0 <= button <= 32:
+                warnings.append(f"{name}: unsupported scroll button {value}")
+            else:
+                put("libinput Button Scrolling Button", [button])
+        enabled = saved("Enabled")
+        external = saved("DisableEventsOnExternalMouse")
+        if enabled or external:
+            enabled = boolean(enabled or "true")
+            external = boolean(external or "false")
+            put("libinput Send Events Mode Enabled", [int(not enabled), int(enabled and external)],
+                available="libinput Send Events Modes Available")
+        factor = self.preferences.read("kcminputrc", group, "ScrollFactor")
+        if factor and float(factor) != 1:
+            warnings.append(f"{name}: KWin ScrollFactor has no equivalent Xorg wheel-speed setting")
+        for prop in desired:
+            original.setdefault(prop, properties[prop])
+        changes = {**{prop: value for prop, value in original.items() if prop not in desired}, **desired}
+        for prop, values in changes.items():
+            if properties[prop] != values:
+                run(["xinput", "set-prop", device_id, prop, *values])
+        for prop in set(original) - set(desired):
+            del original[prop]
+        return identity, {"id": device_id, "name": name, "properties": desired}, warnings
+
+    def keyboard(self, devices):
+        read = self.preferences.read
+        arguments = []
+        values = {key: read("kxkbrc", "Layout", key) for key in
+                  ("Model", "LayoutList", "VariantList", "Options", "Use", "ResetOldOptions")}
+        repeat = {key: read("kcminputrc", "Keyboard", key)
+                  for key in ("KeyRepeat", "RepeatDelay", "RepeatRate")}
+        switch = read("kxkbrc", "Layout", "SwitchMode")
+        signature = tuple(values.items()), tuple(repeat.items()), switch, devices
+        if signature == self.keyboard_previous:
+            return self.keyboard_report
+        if values["Model"]:
+            arguments.extend(["-model", values["Model"]])
+        if boolean(values["Use"] or "false") and values["LayoutList"]:
+            if len(values["LayoutList"].split(",")) > 4:
+                raise SettingsError("X11 supports at most four keyboard layouts")
+            arguments.extend(["-layout", values["LayoutList"], "-variant", values["VariantList"]])
+        if boolean(values["ResetOldOptions"] or "false"):
+            arguments.extend(["-option", ""])
+        for option in filter(None, values["Options"].split(",")):
+            arguments.extend(["-option", option])
+        if arguments:
+            run(["setxkbmap", *arguments])
+        warnings = []
+        if any(repeat.values()):
+            mode = repeat["KeyRepeat"] or "repeat"
+            if mode in ("repeat", "accent"):
+                delay = int(repeat["RepeatDelay"] or 600)
+                rate = float(repeat["RepeatRate"] or 25)
+                if not 100 <= delay <= 5000 or not 0.2 <= rate <= 200:
+                    raise SettingsError(f"Invalid KDE repeat delay/rate: {delay}/{rate}")
+                run(["xset", "r", "on"])
+                x11 = ctypes.CDLL("libX11.so.6")
+                x11.XOpenDisplay.restype = ctypes.c_void_p
+                x11.XOpenDisplay.argtypes = [ctypes.c_char_p]
+                x11.XkbSetAutoRepeatRate.argtypes = [ctypes.c_void_p, ctypes.c_uint,
+                                                    ctypes.c_uint, ctypes.c_uint]
+                x11.XCloseDisplay.argtypes = [ctypes.c_void_p]
+                display = x11.XOpenDisplay(None)
+                if not display:
+                    raise SettingsError("Cannot open X11 to set keyboard repeat")
+                try:
+                    if not x11.XkbSetAutoRepeatRate(display, 0x100, delay, round(1000 / rate)):
+                        raise SettingsError("XKB could not apply keyboard repeat")
+                finally:
+                    x11.XCloseDisplay(display)
+                if mode == "accent":
+                    warnings.append("Plasma's hold-key accent menu is unavailable; using key repeat")
+            elif mode in ("nothing", "none"):
+                run(["xset", "r", "off"])
+            else:
+                raise SettingsError(f"Unsupported KDE KeyRepeat mode: {mode!r}")
+        if switch and switch != "Global":
+            warnings.append("Per-window/application keyboard layouts require Plasma; using a global layout")
+        self.keyboard_previous = signature
+        self.keyboard_report = {"setxkbmap": arguments, **repeat}, warnings
+        return self.keyboard_report
+
+    def poll(self):
+        errors = []
+        try:
+            listing = run(["xinput", "--list", "--short"])
+            signature = self.preferences.signature(), listing
+            if signature == self.previous:
+                return self.report
+            self.preferences.cache.clear()
+            report = {"devices": [], "keyboard": {}, "warnings": [], "errors": errors}
+            present = set()
+            for device_id in re.findall(r"\bid=(\d+)\b", listing):
+                try:
+                    result = self.device(device_id)
+                    if result:
+                        identity, device, warnings = result
+                        present.add(identity)
+                        if device["properties"]:
+                            report["devices"].append(device)
+                        report["warnings"].extend(warnings)
+                except (OSError, ValueError, SettingsError, subprocess.SubprocessError) as error:
+                    errors.append(f"Device {device_id}: {error}")
+            if not errors:
+                self.original = {key: value for key, value in self.original.items() if key in present}
+            try:
+                keyboards = tuple(re.findall(r"id=(\d+)\s+\[[^\n]*keyboard", listing))
+                report["keyboard"], warnings = self.keyboard(keyboards)
+                report["warnings"].extend(warnings)
+            except (OSError, ValueError, SettingsError, subprocess.SubprocessError) as error:
+                errors.append(f"Keyboard: {error}")
+            self.previous = None if errors else signature
+        except (OSError, ValueError, SettingsError, subprocess.SubprocessError) as error:
+            report = {**self.report, "errors": [f"Input settings: {error}; install xorg-xinput and xorg-setxkbmap"]}
+        if report != self.report:
+            for message in report["warnings"] + report["errors"]:
+                print(f"xmonad-kde-settings: {message}", file=sys.stderr, flush=True)
+        self.report = report
+        return report
 
 
 def watch(directory):
@@ -213,6 +533,9 @@ def watch(directory):
             print("ready", flush=True)
             return
         preferences = Preferences()
+        inputs = InputSettings(preferences)
+        applied = {}
+        cursors = None
         daemon = None
         previous = None
         stopping = False
@@ -243,32 +566,52 @@ def watch(directory):
                         else:
                             daemon.send_signal(signal.SIGHUP)
                         notify_kde()
-                        atomic_write(directory / "status.json", json.dumps({
+                        if cursors is None:
+                            cursors = CursorTheme()
+                        cursors.apply(settings["cursor_theme"], settings["cursor_size"])
+                        applied = {
                             "pid": os.getpid(), "display": os.environ["DISPLAY"],
                             "scale": settings["scale"], "dpi": settings["dpi"],
                             "source": settings["source"],
-                        }, indent=2) + "\n")
+                            "cursor_theme": settings["cursor_theme"],
+                            "cursor_size": settings["cursor_size"],
+                            "cursor_base_size": settings["cursor_base_size"],
+                        }
                         print(f"Applied {settings['scale'] * 100:g}% from {settings['source']}", file=sys.stderr, flush=True)
-                        if previous is None:
-                            print("ready", flush=True)
+                        first = previous is None
                         previous = signature
+                    else:
+                        first = False
+                    applied["input"] = inputs.poll()
+                    atomic_write(directory / "status.json", json.dumps(applied, indent=2) + "\n")
+                    if first:
+                        print("ready", flush=True)
                 except (OSError, ValueError, SettingsError, subprocess.SubprocessError) as error:
-                    print(f"xmonad-kde-settings: {error}", file=sys.stderr, flush=True)
                     if previous is None:
                         raise
+                    print(f"xmonad-kde-settings: {error}", file=sys.stderr, flush=True)
                 time.sleep(2)
         finally:
+            if cursors is not None:
+                cursors.close()
             if daemon is not None and daemon.poll() is None:
                 daemon.terminate()
                 daemon.wait(timeout=5)
             (directory / "status.json").unlink(missing_ok=True)
 
 
-def start(directory):
+def log_path():
     log_dir = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "xmonad"
+    return log_dir / "kde-settings.log"
+
+
+def start(directory):
+    path = log_path()
+    log_dir = path.parent
     log_dir.mkdir(parents=True, exist_ok=True)
-    log_path = log_dir / "kde-settings.log"
-    with log_path.open("a") as log:
+    with path.open("a+") as log:
+        log.seek(0, os.SEEK_END)
+        offset = log.tell()
         child = subprocess.Popen(
             [sys.executable, str(Path(__file__).resolve()), "--watch"],
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=log,
@@ -277,13 +620,32 @@ def start(directory):
         try:
             readable, _, _ = select.select([child.stdout], [], [], 30)
             if not readable or child.stdout.readline().strip() != "ready":
-                raise SettingsError(f"Settings startup failed; see {log_path}")
+                child.terminate()
+                child.wait(timeout=5)
+                log.seek(offset)
+                detail = log.read().strip() or (
+                    "Watcher exited without reporting readiness" if readable
+                    else "Watcher did not report readiness within 30 seconds"
+                )
+                raise SettingsError(f"Settings startup failed:\n{detail}\nLog: {path}")
         except BaseException:
             child.terminate()
             child.wait(timeout=5)
             raise
         finally:
             child.stdout.close()
+
+
+def status(directory):
+    try:
+        return (directory / "status.json").read_text()
+    except FileNotFoundError as error:
+        raise SettingsError(
+            f"No applied settings for DISPLAY={os.environ['DISPLAY']}. "
+            "The watcher has not started successfully, or has exited.\n"
+            "Run ~/.local/bin/xmonad-kde-settings --start to start it and show any startup error.\n"
+            f"Log: {log_path()}"
+        ) from error
 
 
 def main():
@@ -299,7 +661,7 @@ def main():
     elif args.watch:
         watch(directory)
     else:
-        print((directory / "status.json").read_text(), end="")
+        print(status(directory), end="")
 
 
 if __name__ == "__main__":
