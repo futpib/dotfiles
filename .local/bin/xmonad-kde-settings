@@ -12,9 +12,13 @@ from pathlib import Path
 import re
 import select
 import signal
+import socket
 import subprocess
 import sys
 import time
+
+
+UNIT = "xmonad-kde-settings.service"
 
 
 class SettingsError(Exception):
@@ -24,7 +28,7 @@ class SettingsError(Exception):
 def run(args, **kwargs):
     try:
         return subprocess.run(
-            args, check=True, text=True, capture_output=True, timeout=10, **kwargs
+            args, check=True, text=True, capture_output=True, timeout=kwargs.pop("timeout", 10), **kwargs
         ).stdout
     except subprocess.CalledProcessError as error:
         detail = (error.stderr or error.stdout or "").strip()
@@ -193,8 +197,8 @@ def active_outputs():
     ))
 
 
-def runtime_dir():
-    display = os.environ.get("DISPLAY")
+def runtime_dir(display=None):
+    display = display or os.environ.get("DISPLAY")
     if not display:
         raise SettingsError("DISPLAY is unset; run this from an X11 session")
     base = os.environ.get("XDG_RUNTIME_DIR")
@@ -572,13 +576,53 @@ class InputSettings:
         return report
 
 
+class ScriptUpdate:
+    def __init__(self):
+        self.path = Path(__file__).absolute()
+        self.current = hashlib.sha256(self.path.read_bytes()).hexdigest()
+        self.pending = None
+        self.rejected = None
+
+    def ready(self):
+        try:
+            source = self.path.read_bytes()
+        except OSError:
+            self.pending = None
+            return False
+        digest = hashlib.sha256(source).hexdigest()
+        if digest == self.current:
+            self.pending = None
+            return False
+        if digest != self.pending:
+            self.pending = digest
+            return False
+        if digest == self.rejected:
+            return False
+        try:
+            compile(source, str(self.path), "exec")
+        except (SyntaxError, ValueError) as error:
+            self.rejected = digest
+            print(f"Script update is invalid; keeping current watcher: {error}", file=sys.stderr, flush=True)
+            return False
+        return True
+
+
+def notify_ready():
+    address = os.environ.get("NOTIFY_SOCKET")
+    if address:
+        if address.startswith("@"):
+            address = "\0" + address[1:]
+        with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as connection:
+            connection.sendto(b"READY=1", address)
+
+
 def watch(directory):
     with (directory / "lock").open("w") as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            print("ready", flush=True)
-            return
+            raise SettingsError("Another settings watcher already owns this display")
+        update = ScriptUpdate()
         preferences = Preferences()
         inputs = InputSettings(preferences)
         applied = {}
@@ -595,6 +639,9 @@ def watch(directory):
         signal.signal(signal.SIGINT, stop)
         try:
             while not stopping:
+                if update.ready():
+                    print("Script updated; restarting settings watcher", file=sys.stderr, flush=True)
+                    return True
                 if daemon is not None and daemon.poll() is not None:
                     raise SettingsError("xsettingsd exited; ending this display's settings watcher")
                 try:
@@ -618,6 +665,7 @@ def watch(directory):
                         cursors.apply(settings["cursor_theme"], settings["cursor_size"])
                         applied = {
                             "pid": os.getpid(), "display": os.environ["DISPLAY"],
+                            "service": UNIT, "script_sha256": update.current,
                             "scale": settings["scale"], "dpi": settings["dpi"],
                             "source": settings["source"],
                             "cursor_theme": settings["cursor_theme"],
@@ -632,6 +680,7 @@ def watch(directory):
                     applied["input"] = inputs.poll()
                     atomic_write(directory / "status.json", json.dumps(applied, indent=2) + "\n")
                     if first:
+                        notify_ready()
                         print("ready", flush=True)
                 except (OSError, ValueError, SettingsError, subprocess.SubprocessError) as error:
                     if previous is None:
@@ -647,40 +696,86 @@ def watch(directory):
             (directory / "status.json").unlink(missing_ok=True)
 
 
-def log_path():
-    log_dir = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "xmonad"
-    return log_dir / "kde-settings.log"
-
-
-def start(directory):
-    path = log_path()
-    log_dir = path.parent
-    log_dir.mkdir(parents=True, exist_ok=True)
-    with path.open("a+") as log:
-        log.seek(0, os.SEEK_END)
-        offset = log.tell()
-        child = subprocess.Popen(
-            [sys.executable, str(Path(__file__).resolve()), "--watch"],
-            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=log,
-            start_new_session=True, text=True,
-        )
+def stop_unmanaged(directory, managed_pid):
+    with (directory / "lock").open("a") as lock:
         try:
-            readable, _, _ = select.select([child.stdout], [], [], 30)
-            if not readable or child.stdout.readline().strip() != "ready":
-                child.terminate()
-                child.wait(timeout=5)
-                log.seek(offset)
-                detail = log.read().strip() or (
-                    "Watcher exited without reporting readiness" if readable
-                    else "Watcher did not report readiness within 30 seconds"
-                )
-                raise SettingsError(f"Settings startup failed:\n{detail}\nLog: {path}")
-        except BaseException:
-            child.terminate()
-            child.wait(timeout=5)
-            raise
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return
+        except BlockingIOError:
+            pass
+        pid = int(json.loads(status(directory))["pid"])
+        if pid == managed_pid:
+            return
+        try:
+            process = os.pidfd_open(pid)
+        except ProcessLookupError:
+            return
+        try:
+            argv = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
+            if b"--watch" not in argv or str(Path(__file__).resolve()).encode() not in argv:
+                raise SettingsError(f"Cannot identify existing watcher {pid}; leaving it running")
+            signal.pidfd_send_signal(process, signal.SIGTERM)
+            if not select.select([process], [], [], 15)[0]:
+                raise SettingsError(f"Existing watcher {pid} did not stop within 15 seconds")
         finally:
-            child.stdout.close()
+            os.close(process)
+
+
+def service_dir():
+    base = os.environ.get("XDG_RUNTIME_DIR")
+    if not base:
+        raise SettingsError("XDG_RUNTIME_DIR is unset")
+    directory = Path(base) / "xmonad-kde-settings"
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    return directory
+
+
+def stop_units(*patterns):
+    listing = run(["systemctl", "--user", "list-units", "--all", "--plain",
+                   "--no-legend", "--no-pager", *patterns])
+    units = [line.split()[0] for line in listing.splitlines() if line.strip()]
+    if units:
+        run(["systemctl", "--user", "stop", *units], timeout=30)
+
+
+def stop():
+    directory = service_dir()
+    with (directory / "control.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        stop_units(UNIT, "xmonad-kde-settings@*.service")
+        display = os.environ.get("DISPLAY")
+        environment = directory / "environment.json"
+        if not display and environment.exists():
+            display = json.loads(environment.read_text()).get("DISPLAY")
+        if display:
+            previous = runtime_dir(display)
+            stop_unmanaged(previous, 0)
+            (previous / "status.json").unlink(missing_ok=True)
+
+
+def start(directory, restart=False):
+    service = service_dir()
+    with (service / "control.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        run(["systemctl", "--user", "daemon-reload"], timeout=30)
+        stop_units("xmonad-kde-settings@*.service")
+        managed_pid = int(run(["systemctl", "--user", "show", UNIT, "--property=MainPID", "--value"]).strip())
+        stop_unmanaged(directory, managed_pid)
+        names = (
+            "HOME", "DISPLAY", "XAUTHORITY", "PATH", "LANG", "LC_ALL", "LC_CTYPE",
+            "XDG_CONFIG_HOME", "XDG_CONFIG_DIRS", "XDG_DATA_HOME", "XDG_DATA_DIRS", "XDG_STATE_HOME",
+            "XCURSOR_PATH", "DBUS_SESSION_BUS_ADDRESS",
+        )
+        environment = service / "environment.json"
+        contents = json.dumps({key: os.environ.get(key) for key in names})
+        if managed_pid and (not environment.exists() or environment.read_text() != contents):
+            restart = True
+        atomic_write(environment, contents)
+        try:
+            run(["systemctl", "--user", "restart" if restart else "start", UNIT], timeout=45)
+            run(["systemctl", "--user", "is-active", "--quiet", UNIT])
+        except (SettingsError, subprocess.TimeoutExpired) as error:
+            raise SettingsError(f"{error}\nLogs: journalctl --user -u {UNIT} -n 50") from error
 
 
 def status(directory):
@@ -691,22 +786,42 @@ def status(directory):
             f"No applied settings for DISPLAY={os.environ['DISPLAY']}. "
             "The watcher has not started successfully, or has exited.\n"
             "Run ~/.local/bin/xmonad-kde-settings --start to start it and show any startup error.\n"
-            f"Log: {log_path()}"
+            f"Logs: journalctl --user -u {UNIT} -n 50"
         ) from error
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--start", action="store_true", help="start once per display and wait until settings are applied")
+    mode.add_argument("--start", action="store_true", help="start the service and wait until settings are applied")
+    mode.add_argument("--restart", action="store_true", help="restart the service and reapply settings")
+    mode.add_argument("--stop", action="store_true", help="stop the watcher without resetting applied settings")
     mode.add_argument("--watch", action="store_true", help="run the settings watcher in the foreground")
     mode.add_argument("--status", action="store_true", help="print the last applied settings")
+    mode.add_argument("--check-display", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--environment", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args()
+    if args.environment:
+        if not (args.watch or args.check_display):
+            parser.error("--environment is only used by the service")
+        for key, value in json.loads(args.environment.read_text()).items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+    if args.stop:
+        stop()
+        return
     directory = runtime_dir()
-    if args.start:
-        start(directory)
+    if args.start or args.restart:
+        start(directory, restart=args.restart)
     elif args.watch:
-        watch(directory)
+        if watch(directory):
+            if os.environ.get("NOTIFY_SOCKET"):
+                sys.exit(75)
+            os.execv(sys.executable, [sys.executable, str(Path(__file__).absolute()), "--watch"])
+    elif args.check_display:
+        active_outputs()
     else:
         print(status(directory), end="")
 

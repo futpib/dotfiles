@@ -94,6 +94,7 @@
 !.config/systemd/user/plasma-workspace.target.wants/plasma-xmonad.service
 !.config/systemd/user/clipcat.service
 !.config/systemd/user/dunst.service
+!.config/systemd/user/xmonad-kde-settings.service
 
 !.config/fontconfig
 .config/fontconfig/*
