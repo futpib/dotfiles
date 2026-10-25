@@ -1,0 +1,19 @@
+[Unit]
+Description=KDE settings for xmonad display %i
+StartLimitIntervalSec=30
+StartLimitBurst=5
+
+[Service]
+Type=notify
+ExecCondition=%h/.local/bin/xmonad-kde-settings --check-display --environment %t/xmonad-kde-settings-%i/environment.json
+ExecStart=%h/.local/bin/xmonad-kde-settings --watch --environment %t/xmonad-kde-settings-%i/environment.json
+Restart=on-failure
+SuccessExitStatus=75
+RestartForceExitStatus=75
+RestartSec=1
+TimeoutStartSec=30
+TimeoutStopSec=15
+KillMode=mixed
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=xmonad-kde-settings
