@@ -459,7 +459,11 @@ class InputSettings:
                 warnings.append(f"{name}: unsupported scroll button {value}")
             else:
                 put("libinput Button Scrolling Button", [button])
-        enabled = saved("Enabled")
+        enabled = self.preferences.read("kcminputrc", group, "Enabled")
+        if not enabled and touchpad:
+            disabled = self.preferences.read("touchpadxlibinputrc", name, "enabled")
+            if disabled:
+                enabled = str(not boolean(disabled)).lower()
         external = saved("DisableEventsOnExternalMouse")
         if enabled or external:
             enabled = boolean(enabled or "true")
