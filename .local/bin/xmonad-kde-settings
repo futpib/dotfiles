@@ -1,0 +1,310 @@
+#!/usr/bin/env python3
+"""Apply saved KDE appearance and uniform scaling to a standalone X11 session."""
+
+import argparse
+import fcntl
+import hashlib
+import json
+import math
+import os
+from pathlib import Path
+import re
+import select
+import signal
+import subprocess
+import sys
+import time
+
+
+class SettingsError(Exception):
+    pass
+
+
+def run(args, **kwargs):
+    return subprocess.run(
+        args, check=True, text=True, capture_output=True, timeout=10, **kwargs
+    ).stdout
+
+
+def scale_number(value):
+    try:
+        result = float(value)
+    except (ValueError, TypeError) as error:
+        raise SettingsError(f"Invalid KDE scale: {value!r}") from error
+    if not math.isfinite(result) or not 0 < result <= 5:
+        raise SettingsError(f"Invalid KDE scale: {value!r}")
+    return result
+
+
+def uniform_scale(values, source):
+    scales = {scale_number(value) for value in values}
+    if len(scales) > 1:
+        raise SettingsError(
+            f"{source} has mixed monitor scales {sorted(scales)}; "
+            "this X11 bridge requires a uniform scale"
+        )
+    return next(iter(scales)) if scales else None
+
+
+def connector(name):
+    return name.replace("HDMI-A-", "HDMI-")
+
+
+def resolve_scale(global_scale, screen_scales, wayland, outputs, xwayland_scale, font_dpi):
+    if global_scale:
+        return scale_number(global_scale), "kdeglobals / KScreen / ScaleFactor"
+    if screen_scales:
+        entries = [entry for entry in screen_scales.split(";") if entry]
+        named = [entry.rsplit("=", 1) for entry in entries if "=" in entry]
+        values = [value for name, value in named if connector(name) in outputs]
+        if not values:
+            values = [entry.rsplit("=", 1)[-1] for entry in entries]
+        value = uniform_scale(values, "KScreen / ScreenScaleFactors")
+        if value is not None:
+            return value, "kdeglobals / KScreen / ScreenScaleFactors"
+    if wayland is not None:
+        if not isinstance(wayland, list) or any(not isinstance(item, dict) for item in wayland):
+            raise SettingsError("Unexpected kwinoutputconfig.json structure")
+        stores = [item for item in wayland if item.get("name") == "outputs"]
+        if not stores or not isinstance(stores[0].get("data"), list):
+            raise SettingsError("kwinoutputconfig.json has no outputs array")
+        saved = stores[0]["data"]
+        if any(not isinstance(item, dict) or not isinstance(item.get("connectorName", ""), str)
+               for item in saved):
+            raise SettingsError("kwinoutputconfig.json contains an invalid output")
+        matching = [item for item in saved if connector(item.get("connectorName", "")) in outputs]
+        candidates = matching or saved
+        value = uniform_scale(
+            [item["scale"] for item in candidates if "scale" in item],
+            "kwinoutputconfig.json",
+        )
+        if value is not None:
+            return value, "kwinoutputconfig.json / outputs / scale"
+    if xwayland_scale:
+        return scale_number(xwayland_scale), "kwinrc / Xwayland / Scale"
+    if font_dpi and float(font_dpi) > 0:
+        return scale_number(float(font_dpi) / 96), "kcmfonts / General / forceFontDPI"
+    return 1.0, "KDE default (no saved scaling override)"
+
+
+class Preferences:
+    def __init__(self):
+        self.home = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+        directories = os.environ.get("XDG_CONFIG_DIRS", "/etc/xdg").split(":")
+        self.dirs = list(dict.fromkeys([self.home, self.home / "kdedefaults", *map(Path, directories)]))
+        self.cache = {}
+
+    def read(self, filename, group, key, default=""):
+        cache_key = filename, group, key, default
+        if cache_key not in self.cache:
+            self.cache[cache_key] = run([
+                "kreadconfig6", "--file", filename, "--group", group,
+                "--key", key, "--default", str(default),
+            ]).rstrip("\n")
+        return self.cache[cache_key]
+
+    def files(self):
+        names = ("kdeglobals", "kwinrc", "kwinoutputconfig.json", "kcminputrc", "kcmfonts")
+        return [directory / name for directory in self.dirs for name in names] + [
+            Path.home() / ".xsettingsd", self.home / "xsettingsd/xsettingsd.conf",
+        ]
+
+    def signature(self):
+        result = []
+        for path in self.files():
+            try:
+                stat = path.stat()
+                result.append((str(path), stat.st_mtime_ns, stat.st_size, stat.st_ino))
+            except FileNotFoundError:
+                result.append((str(path), None))
+        return result
+
+    def settings(self, outputs):
+        self.cache.clear()
+        global_scale = self.read("kdeglobals", "KScreen", "ScaleFactor")
+        screen_scales = self.read("kdeglobals", "KScreen", "ScreenScaleFactors")
+        wayland_file = next((directory / "kwinoutputconfig.json" for directory in self.dirs
+                             if (directory / "kwinoutputconfig.json").exists()), None)
+        wayland = (json.loads(wayland_file.read_text())
+                   if wayland_file and not (global_scale or screen_scales) else None)
+        scale, source = resolve_scale(
+            global_scale, screen_scales,
+            wayland, outputs,
+            self.read("kwinrc", "Xwayland", "Scale"),
+            self.read("kcmfonts", "General", "forceFontDPI"),
+        )
+        dpi = round(96 * scale)
+        cursor_theme = self.read("kcminputrc", "Mouse", "cursorTheme", "breeze_cursors")
+        cursor_size = max(1, round(int(self.read("kcminputrc", "Mouse", "cursorSize", "24")) * scale))
+        hint = self.read("kdeglobals", "General", "XftHintStyle", "hintslight")
+        if hint not in ("hintnone", "hintslight", "hintmedium", "hintfull"):
+            raise SettingsError(f"Invalid KDE font hint style: {hint!r}")
+        rgba = self.read("kdeglobals", "General", "XftSubPixel", "rgb")
+        if rgba not in ("none", "rgb", "bgr", "vrgb", "vbgr"):
+            raise SettingsError(f"Invalid KDE subpixel order: {rgba!r}")
+        if any(char in cursor_theme for char in "\r\n"):
+            raise SettingsError("Invalid multiline KDE cursor theme")
+        antialias = self.read("kdeglobals", "General", "XftAntialias", "true").lower() == "true"
+        resources = {
+            "Xft.dpi": dpi, "Xft.antialias": int(antialias),
+            "Xft.hinting": int(hint != "hintnone"), "Xft.hintstyle": hint,
+            "Xft.rgba": rgba, "Xcursor.theme": cursor_theme, "Xcursor.size": cursor_size,
+        }
+        settings = {
+            "Xft/DPI": round(96 * scale * 1024), "Xft/Antialias": int(antialias),
+            "Xft/Hinting": int(hint != "hintnone"), "Xft/HintStyle": hint,
+            "Xft/RGBA": rgba, "Gtk/CursorThemeName": cursor_theme,
+            "Gtk/CursorThemeSize": cursor_size,
+        }
+        baseline = ""
+        for path in (Path.home() / ".xsettingsd", self.home / "xsettingsd/xsettingsd.conf"):
+            if path.exists():
+                baseline = path.read_text()
+                break
+        lines = [line for line in baseline.splitlines()
+                 if not line.split() or line.split()[0] not in settings]
+        lines.extend(f"{key} {json.dumps(value, ensure_ascii=False)}" for key, value in settings.items())
+        return {
+            "scale": scale, "source": source, "dpi": dpi,
+            "resources": "".join(f"{key}: {value}\n" for key, value in resources.items()),
+            "xsettings": "\n".join(lines) + "\n",
+        }
+
+
+def active_outputs():
+    text = run(["xrandr", "--query"])
+    return tuple(connector(match.group(1)) for match in re.finditer(
+        r"^(\S+) connected(?: primary)? \d+x\d+[+-]\d+[+-]\d+", text, re.M
+    ))
+
+
+def runtime_dir():
+    display = os.environ.get("DISPLAY")
+    if not display:
+        raise SettingsError("DISPLAY is unset; run this from an X11 session")
+    base = os.environ.get("XDG_RUNTIME_DIR")
+    if not base:
+        raise SettingsError("XDG_RUNTIME_DIR is unset")
+    suffix = hashlib.sha256(display.encode()).hexdigest()[:12]
+    path = Path(base) / f"xmonad-kde-settings-{suffix}"
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    return path
+
+
+def atomic_write(path, contents):
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(contents)
+    temporary.replace(path)
+
+
+def notify_kde():
+    for change in (0, 2, 4, 5):
+        run(["dbus-send", "--session", "--type=signal", "/KGlobalSettings",
+             "org.kde.KGlobalSettings.notifyChange", f"int32:{change}", "int32:0"])
+    run(["dbus-send", "--session", "--type=signal", "/KDEPlatformTheme",
+         "org.kde.KDEPlatformTheme.refreshFonts"])
+
+
+def watch(directory):
+    with (directory / "lock").open("w") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print("ready", flush=True)
+            return
+        preferences = Preferences()
+        daemon = None
+        previous = None
+        stopping = False
+
+        def stop(*_):
+            nonlocal stopping
+            stopping = True
+
+        signal.signal(signal.SIGTERM, stop)
+        signal.signal(signal.SIGINT, stop)
+        try:
+            while not stopping:
+                if daemon is not None and daemon.poll() is not None:
+                    raise SettingsError("xsettingsd exited; ending this display's settings watcher")
+                try:
+                    outputs = active_outputs()
+                    signature = preferences.signature(), outputs
+                    if signature != previous:
+                        settings = preferences.settings(outputs)
+                        config = directory / "xsettingsd.conf"
+                        atomic_write(config, settings["xsettings"])
+                        run(["xrdb", "-merge", "-nocpp"], input=settings["resources"])
+                        if daemon is None:
+                            daemon = subprocess.Popen(["xsettingsd", "--config", str(config)], stdout=sys.stderr)
+                            time.sleep(0.15)
+                            if daemon.poll() is not None:
+                                raise SettingsError("xsettingsd could not acquire the display's settings selection")
+                        else:
+                            daemon.send_signal(signal.SIGHUP)
+                        notify_kde()
+                        atomic_write(directory / "status.json", json.dumps({
+                            "pid": os.getpid(), "display": os.environ["DISPLAY"],
+                            "scale": settings["scale"], "dpi": settings["dpi"],
+                            "source": settings["source"],
+                        }, indent=2) + "\n")
+                        print(f"Applied {settings['scale'] * 100:g}% from {settings['source']}", file=sys.stderr, flush=True)
+                        if previous is None:
+                            print("ready", flush=True)
+                        previous = signature
+                except (OSError, ValueError, SettingsError, subprocess.SubprocessError) as error:
+                    print(f"xmonad-kde-settings: {error}", file=sys.stderr, flush=True)
+                    if previous is None:
+                        raise
+                time.sleep(2)
+        finally:
+            if daemon is not None and daemon.poll() is None:
+                daemon.terminate()
+                daemon.wait(timeout=5)
+            (directory / "status.json").unlink(missing_ok=True)
+
+
+def start(directory):
+    log_dir = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "xmonad"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = log_dir / "kde-settings.log"
+    with log_path.open("a") as log:
+        child = subprocess.Popen(
+            [sys.executable, str(Path(__file__).resolve()), "--watch"],
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=log,
+            start_new_session=True, text=True,
+        )
+        try:
+            readable, _, _ = select.select([child.stdout], [], [], 30)
+            if not readable or child.stdout.readline().strip() != "ready":
+                raise SettingsError(f"Settings startup failed; see {log_path}")
+        except BaseException:
+            child.terminate()
+            child.wait(timeout=5)
+            raise
+        finally:
+            child.stdout.close()
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--start", action="store_true", help="start once per display and wait until settings are applied")
+    mode.add_argument("--watch", action="store_true", help="run the settings watcher in the foreground")
+    mode.add_argument("--status", action="store_true", help="print the last applied settings")
+    args = parser.parse_args()
+    directory = runtime_dir()
+    if args.start:
+        start(directory)
+    elif args.watch:
+        watch(directory)
+    else:
+        print((directory / "status.json").read_text(), end="")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (OSError, ValueError, SettingsError, subprocess.SubprocessError) as error:
+        print(f"xmonad-kde-settings: {error}", file=sys.stderr)
+        sys.exit(1)

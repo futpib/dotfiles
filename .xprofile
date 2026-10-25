@@ -1,2 +1,15 @@
 
 xset -b
+
+case "${DESKTOP_SESSION:-}:${XDG_SESSION_DESKTOP:-}" in
+    *xmonad*)
+        export QT_QPA_PLATFORMTHEME=kde
+        export QT_SCALE_FACTOR_ROUNDING_POLICY=PassThrough
+        unset QT_STYLE_OVERRIDE QT_SCALE_FACTOR QT_SCREEN_SCALE_FACTORS QT_FONT_DPI QT_USE_PHYSICAL_DPI QT_ENABLE_HIGHDPI_SCALING
+        export XDG_CONFIG_DIRS="${XDG_CONFIG_HOME:-$HOME/.config}/kdedefaults:${XDG_CONFIG_DIRS:-/etc/xdg}"
+        systemctl --user unset-environment QT_STYLE_OVERRIDE QT_SCALE_FACTOR QT_SCREEN_SCALE_FACTORS QT_FONT_DPI QT_USE_PHYSICAL_DPI QT_ENABLE_HIGHDPI_SCALING
+        dbus-update-activation-environment --systemd DISPLAY XAUTHORITY QT_QPA_PLATFORMTHEME QT_SCALE_FACTOR_ROUNDING_POLICY XDG_CONFIG_DIRS
+        "$HOME/.local/bin/xmonad-kde-settings" --start
+        echo 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=' | base64 -d | xloadimage -onroot -tile stdin
+        ;;
+esac

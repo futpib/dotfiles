@@ -26,6 +26,7 @@
 !.xmonad/
 .xmonad/*
 !.xmonad/xmonad.hs
+!.xmonad/README.md
 
 !.config
 .config/*
@@ -106,6 +107,7 @@
 !.local/bin/
 .local/bin/*
 !.local/bin/lvcache
+!.local/bin/xmonad-kde-settings
 !.local/bin/ffmpeg-mute
 !.local/bin/chrome-headless
 !.local/bin/emacsclient-wrapper
