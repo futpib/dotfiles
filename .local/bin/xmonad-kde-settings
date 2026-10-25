@@ -237,12 +237,54 @@ class CursorTheme:
         query_extension = bind(xfixes, "XFixesQueryExtension", integer, pointer,
                                ctypes.POINTER(integer), ctypes.POINTER(integer))
         self.replace_cursor = bind(xfixes, "XFixesChangeCursorByName", None, pointer, xid, string)
+        self.intern_atom = bind(x11, "XInternAtom", xid, pointer, string, integer)
+        self.create_pixmap = bind(x11, "XCreatePixmap", xid, pointer, xid,
+                                  ctypes.c_uint, ctypes.c_uint, ctypes.c_uint)
+        self.get_property = bind(x11, "XGetWindowProperty", integer, pointer, xid, xid,
+                                 ctypes.c_long, ctypes.c_long, integer, xid,
+                                 ctypes.POINTER(xid), ctypes.POINTER(integer),
+                                 ctypes.POINTER(xid), ctypes.POINTER(xid), ctypes.POINTER(pointer))
+        self.change_property = bind(x11, "XChangeProperty", integer, pointer, xid, xid, xid,
+                                    integer, integer, pointer, integer)
+        self.free = bind(x11, "XFree", integer, pointer)
+        self.close_down_mode = bind(x11, "XSetCloseDownMode", integer, pointer, integer)
+        self.kill_client = bind(x11, "XKillClient", integer, pointer, xid)
+        self.grab_server = bind(x11, "XGrabServer", integer, pointer)
+        self.ungrab_server = bind(x11, "XUngrabServer", integer, pointer)
+        self.marker = None
+        self.previous_owner = None
         self.display = open_display(None)
         if not self.display:
             raise SettingsError("Cannot open the X11 display to apply the cursor")
         self.can_replace = query_extension(self.display, ctypes.byref(integer()), ctypes.byref(integer()))
 
+    def retain_owner(self):
+        root = self.root_window(self.display)
+        atom = self.intern_atom(self.display, b"_XMONAD_KDE_CURSOR_OWNER", False)
+        pixmap_type = self.intern_atom(self.display, b"PIXMAP", False)
+        retain_temporary = 2
+        actual_type, count, remaining = ctypes.c_ulong(), ctypes.c_ulong(), ctypes.c_ulong()
+        actual_format, data = ctypes.c_int(), ctypes.c_void_p()
+        self.grab_server(self.display)
+        try:
+            result = self.get_property(self.display, root, atom, 0, 1, False, pixmap_type,
+                                       ctypes.byref(actual_type), ctypes.byref(actual_format),
+                                       ctypes.byref(count), ctypes.byref(remaining), ctypes.byref(data))
+            if (result == 0 and actual_type.value == pixmap_type
+                    and actual_format.value == 32 and count.value == 1):
+                self.previous_owner = ctypes.cast(data, ctypes.POINTER(ctypes.c_ulong))[0]
+            self.close_down_mode(self.display, retain_temporary)
+            self.marker = ctypes.c_ulong(self.create_pixmap(self.display, root, 1, 1, 1))
+            self.change_property(self.display, root, atom, pixmap_type, 32, 0,
+                                 ctypes.byref(self.marker), 1)
+        finally:
+            if data.value:
+                self.free(data)
+            self.ungrab_server(self.display)
+
     def apply(self, theme, size):
+        if self.marker is None:
+            self.retain_owner()
         self.set_theme(self.display, (theme or "default").encode())
         self.set_size(self.display, size)
         names = (
@@ -273,6 +315,9 @@ class CursorTheme:
             self.define_cursor(self.display, self.root_window(self.display), cursor)
         finally:
             self.free_cursor(self.display, cursor)
+        if self.previous_owner:
+            self.kill_client(self.display, self.previous_owner)
+            self.previous_owner = None
         self.sync(self.display, False)
 
     def close(self):
@@ -352,6 +397,8 @@ class InputSettings:
 
         for key, (prop, legacy) in self.boolean_properties.items():
             value = saved(key, legacy, "middleEmulation" if key == "MiddleButtonEmulation" else None)
+            if touchpad and not value and key in ("TapToClick", "TapAndDrag"):
+                value = self.preferences.read("kcminputrc", ("Libinput", "Defaults", "Touchpad"), key, "true")
             if value:
                 put(prop, [int(boolean(value))])
         value = saved("PointerAcceleration", "XLbInptPointerAcceleration")
