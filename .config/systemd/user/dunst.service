@@ -1,10 +1,11 @@
 [Install]
-WantedBy=plasma-workspace.target
+WantedBy=graphical-session.target
 
 [Unit]
 Description=Dunst notification daemon
 Documentation=man:dunst(1)
 PartOf=graphical-session.target
+After=graphical-session-pre.target
 Before=plasma-workspace.target
 
 [Service]
