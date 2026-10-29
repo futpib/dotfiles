@@ -1,8 +1,10 @@
 [Install]
-WantedBy=plasma-workspace.target
+WantedBy=graphical-session.target
 
 [Unit]
-Description=Plasma clipcatd
+Description=Clipcat clipboard manager
+PartOf=graphical-session.target
+After=graphical-session-pre.target
 Before=plasma-workspace.target
 
 [Service]
