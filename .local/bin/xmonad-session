@@ -102,9 +102,15 @@ def session():
             control("start", TARGET, timeout=150)
             print("xmonad session started; logs: journalctl --user -u xmonad.service", flush=True)
             while not stopping:
-                if properties(TARGET).get("ActiveState") not in ("active", "activating"):
-                    break
-                state = properties(UNIT)
+                try:
+                    if properties(TARGET).get("ActiveState") in ("inactive", "failed", "deactivating"):
+                        break
+                    state = properties(UNIT)
+                except (OSError, subprocess.SubprocessError) as error:
+                    print(f"xmonad-session: Cannot query session state; keeping session running "
+                          f"and retrying: {error}", file=sys.stderr, flush=True)
+                    time.sleep(1)
+                    continue
                 if state.get("ActiveState") in ("inactive", "failed") and state.get("Job") in (None, "", "0"):
                     if state["ActiveState"] == "failed":
                         raise RuntimeError("xmonad.service failed; see journalctl --user -u xmonad.service")
