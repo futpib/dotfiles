@@ -177,5 +177,5 @@ spawn :: String -> X ()
 spawn command = safeSpawn "systemd-run"
     [ "--user", "--scope", "--quiet", "--collect", "--expand-environment=no"
     , "--slice=app.slice", "--property=PartOf=xmonad-session.target"
-    , "--", "/bin/sh", "-c", command
+    , "--", "systemd-cat", "--", "/bin/sh", "-c", command
     ]
