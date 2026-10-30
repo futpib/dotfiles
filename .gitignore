@@ -120,10 +120,6 @@
 !.local/bin/remove-wine-file-association
 !.local/bin/nvm-package-json-node-version
 
-!.local/libexec/
-.local/libexec/*
-!.local/libexec/cache-clean.py
-
 !.local/share/
 .local/share/*
 !.local/share/konsole/
