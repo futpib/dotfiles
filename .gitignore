@@ -33,6 +33,7 @@
 !.config/picom.conf
 !.config/systemmonitorrc
 !.config/dolphinrc
+!.config/cache-clean.conf
 
 !.config/mpv
 .config/mpv/*
@@ -91,6 +92,8 @@
 !.config/systemd/user/xmonad-session.target
 !.config/systemd/user/clipcat.service
 !.config/systemd/user/dunst.service
+!.config/systemd/user/cache-clean.service
+!.config/systemd/user/cache-clean.timer
 !.config/systemd/user/xmonad-kde-settings.service
 !.config/systemd/user/xmonad-screen-lock.service
 
@@ -105,6 +108,7 @@
 !.local/bin/
 .local/bin/*
 !.local/bin/lvcache
+!.local/bin/cache-clean
 !.local/bin/xmonad-kde-settings
 !.local/bin/xmonad
 !.local/bin/xmonad-session
@@ -115,6 +119,10 @@
 !.local/bin/translate-clipboard
 !.local/bin/remove-wine-file-association
 !.local/bin/nvm-package-json-node-version
+
+!.local/libexec/
+.local/libexec/*
+!.local/libexec/cache-clean.py
 
 !.local/share/
 .local/share/*

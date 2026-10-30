@@ -2,7 +2,13 @@
 
 set -euo pipefail
 
+if [[ ${1:-} == --pressure ]]; then
+    shift
+    exec python3 "$(dirname -- "$(realpath -e -- "$0")")/../libexec/cache-clean.py" pressure "$@"
+fi
+
 apply=false
+build_inventory=false
 verbose=false
 include_stopped_containers=false
 include_journals=false
@@ -10,6 +16,7 @@ all_reproducible=false
 clean_builds=true
 clean_docker_scope=true
 clean_system=true
+docker_only=false
 age=7d
 declare -a requested_build_roots=()
 
@@ -24,16 +31,21 @@ Options:
     --age DURATION                 Staleness threshold (default: 7d)
                                    Units: s, m, h, d, w; e.g. 36h or 2w
     --apply                        Perform the removals
+    --pressure [OPTIONS]           Reclaim space only below a low watermark;
+                                   escalate by cost, oldest use first, stopping
+                                   at a high watermark (see --pressure --help)
     --all-reproducible             Ignore age for generated build trees and
                                    tool caches; prune all unused Docker images
                                    and build cache
-    --build-root PATH              Scan an additional/alternate build root;
+    --build-root PATH              Replace default discovery with this root;
                                    repeatable (defaults: ~/code, ~/.scratch,
-                                   and ~/REPOS)
+                                   and ~/REPOS, plus validated CMake builds
+                                   below non-hidden home directories)
     --include-stopped-containers   Also prune stopped Docker containers
     --include-journals             Also vacuum archived systemd journals
     --no-builds                    Skip generated project build artifacts
     --no-docker                    Skip Docker caches and images
+    --docker-only                  Only clean Docker; leave other caches alone
     --no-system                    Skip pacman and systemd journal caches
     --verbose                      List individual filesystem candidates
     -h, --help                     Show this help
@@ -42,6 +54,9 @@ Scopes:
     - stale files and symlinks below ${XDG_CACHE_HOME:-~/.cache}
     - generated Rust, Flutter/Dart, Gradle, Node, CMake/Meson, and Python
       environment trees below the configured build roots
+    - validated external CMake builds below non-hidden home directories
+      when no --build-root is supplied
+    - old Rust incremental sessions, even when a target contains a running app
     - reproducible Gradle, Cargo, npm, Dart, and Bun caches when
       --all-reproducible is passed
     - pacman package-cache files
@@ -51,6 +66,8 @@ Scopes:
 
 Active build/cache paths are preserved. Docker volumes and running containers
 are never pruned. Stopped containers require --include-stopped-containers.
+OpenCode's cache and config trees contain installed runtime code and are
+preserved, including in --all-reproducible mode and explicit build roots.
 EOF
 }
 
@@ -95,6 +112,10 @@ while (($# > 0)); do
             age=${1#*=}
             shift
             ;;
+        --build-inventory)
+            build_inventory=true
+            shift
+            ;;
         --apply)
             apply=true
             shift
@@ -128,6 +149,10 @@ while (($# > 0)); do
             clean_docker_scope=false
             shift
             ;;
+        --docker-only)
+            docker_only=true
+            shift
+            ;;
         --no-system)
             clean_system=false
             shift
@@ -145,6 +170,10 @@ while (($# > 0)); do
             ;;
     esac
 done
+
+if $docker_only && ! $clean_docker_scope; then
+    die "--docker-only conflicts with --no-docker"
+fi
 
 age_seconds=$(duration_seconds "$age")
 now=$(date +%s)
@@ -167,7 +196,16 @@ tracked_candidates=0
 declare -a build_roots=()
 declare -a active_paths=()
 declare -a active_working_directories=()
+declare -a active_rust_paths=()
+declare -a runtime_roots=(
+    "$(realpath -m -- "$cache_root/opencode")"
+    "$(realpath -m -- "${OPENCODE_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/opencode}")"
+)
 declare -A seen_build_candidates=()
+declare -A build_kinds=()
+declare -A seen_incremental_candidates=()
+declare -A build_projects=()
+declare -A selected_build_trees=()
 
 function display_path {
     local path=$1
@@ -218,28 +256,46 @@ function initialize_build_roots {
 }
 
 function collect_active_paths {
-    local pid process_directory resolved cmdline
+    local pid process_directory resolved cmdline working_directory command
+    local -a process_paths=()
 
     active_paths=()
     active_working_directories=()
+    active_rust_paths=()
 
     while IFS= read -r pid; do
         process_directory=/proc/$pid
         [[ -d $process_directory ]] || continue
 
         resolved=$(readlink -f -- "$process_directory/cwd" 2>/dev/null) || resolved=
+        working_directory=$resolved
+        process_paths=()
         [[ $resolved == /* ]] && active_working_directories+=("$resolved")
 
         resolved=$(readlink -f -- "$process_directory/exe" 2>/dev/null) || resolved=
-        [[ $resolved == /* ]] && active_paths+=("$resolved")
+        [[ $resolved == /* ]] && process_paths+=("$resolved")
 
         if [[ -r $process_directory/cmdline ]]; then
             cmdline=$(tr '\0' '\n' < "$process_directory/cmdline" 2>/dev/null || true)
             while IFS= read -r resolved; do
-                [[ $resolved == /* ]] && active_paths+=("$resolved")
+                if [[ $resolved == /* ]]; then
+                    process_paths+=("$resolved")
+                elif [[ -n $working_directory && -e $working_directory/$resolved ]]; then
+                    process_paths+=("$(realpath -e -- "$working_directory/$resolved")")
+                fi
             done <<< "$cmdline"
         fi
+        active_paths+=("${process_paths[@]}")
+        command=$(cat "$process_directory/comm" 2>/dev/null) || command=
+        case $command in
+            cargo|rustc|clippy-driver)
+                [[ -z $working_directory ]] || active_rust_paths+=("$working_directory")
+                active_rust_paths+=("${process_paths[@]}")
+                ;;
+        esac
     done < <(pgrep -u "$EUID" || true)
+    # A process with no absolute command-line arguments is not a scan failure.
+    return 0
 }
 
 function tree_is_in_use {
@@ -249,10 +305,16 @@ function tree_is_in_use {
     local active working_directory
 
     git_root=$(git -C "$path" rev-parse --show-toplevel 2>/dev/null) || git_root=
-    [[ -z $git_root ]] || project=$git_root
+    # The home dotfiles repository is not the project owning every build.
+    [[ -z $git_root || $git_root == "$HOME" ]] || project=$git_root
+    project=${build_projects[$path]:-$project}
 
     for active in "${active_paths[@]}"; do
         if [[ $active == "$path" || $active == "$path"/* ]]; then
+            return 0
+        fi
+        if [[ -n ${build_projects[$path]:-} &&
+              ( $active == "$project" || $active == "$project"/* ) ]]; then
             return 0
         fi
     done
@@ -284,6 +346,19 @@ function tree_contains_tracked_files {
     [[ -n $first_tracked ]]
 }
 
+function tree_contains_runtime_installation {
+    local path=$1 root
+
+    # Loaded JS modules need not remain open in /proc. Preserve the complete
+    # installation even while idle, including manifests and lazy dependencies.
+    for root in "${runtime_roots[@]}"; do
+        if [[ $path == "$root" || $path == "$root"/* || $root == "$path"/* ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 function path_is_below_build_root {
     local path=$1
     local root
@@ -296,11 +371,15 @@ function path_is_below_build_root {
 
 function add_build_candidate {
     local path=$1
+    local external_cmake=${2:-false} kind=${3:-unknown}
     local canonical existing
 
-    [[ -d $path ]] || return 0
+    [[ -d $path && ! -L $path ]] || return 0
     canonical=$(realpath -e -- "$path") || return 0
-    path_is_below_build_root "$canonical" || die "refusing build path outside configured roots: $canonical"
+    if ! path_is_below_build_root "$canonical"; then
+        $external_cmake && [[ $canonical == "$HOME"/* ]] ||
+            die "refusing build path outside configured roots: $canonical"
+    fi
 
     for existing in "${!seen_build_candidates[@]}"; do
         [[ $canonical != "$existing"/* ]] || return 0
@@ -309,10 +388,60 @@ function add_build_candidate {
         fi
     done
     seen_build_candidates[$canonical]=1
+    build_kinds[$canonical]=$kind
+}
+
+function generated_build_metadata {
+    # Missing tooling or unfamiliar metadata must leave the directory intact.
+    command -v python3 >/dev/null || return 1
+    python3 "$(dirname -- "$(realpath -e -- "${BASH_SOURCE[0]}")")/../libexec/cache-clean.py" metadata "$@"
+}
+
+function add_cmake_candidate {
+    local path=$1 external=$2 source git_root
+
+    source=$(generated_build_metadata cmake "$path") || return 0
+    git_root=$(git -C "$source" rev-parse --show-toplevel 2>/dev/null) || git_root=
+    [[ -z $git_root || $git_root == "$HOME" ]] || source=$git_root
+    build_projects[$path]=$source
+    add_build_candidate "$path" "$external" cmake
+}
+
+function remove_incremental_if_selected {
+    local path=$1 target=$2 active project result status size
+    local cutoff=$cutoff_epoch
+
+    [[ -d $path ]] || return 0
+    tree_contains_runtime_installation "$path" && return 0
+    tree_contains_tracked_files "$path" && return 0
+    project=${target%/*}
+    for active in "${active_paths[@]}"; do
+        [[ $active != "$path" && $active != "$path"/* ]] || return 0
+    done
+    for active in "${active_rust_paths[@]}"; do
+        if [[ $active == "$project" || $active == "$project"/* ]]; then
+            printf '  preserve-compiler %s\n' "$(display_path "$path")"
+            return 0
+        fi
+    done
+    $all_reproducible && cutoff=0
+    result=$(generated_build_metadata incremental "$path" "$target" "$cutoff" "$apply") || {
+        printf '  preserve-unrecognized %s\n' "$(display_path "$path")"
+        return 0
+    }
+    read -r status size <<< "$result"
+    if [[ $status == selected ]]; then
+        ((build_candidates += 1))
+        build_candidate_bytes=$((build_candidate_bytes + size))
+        printf '  %s incremental sessions in %s (%s)\n' \
+            "$($apply && echo removed || echo would-remove)" "$(display_path "$path")" "$(human_bytes "$size")"
+    elif [[ $status != preserve-empty && $status != preserve-fresh ]]; then
+        printf '  %s %s\n' "$status" "$(display_path "$path")"
+    fi
 }
 
 function discover_build_artifacts {
-    local root marker parent basename
+    local root marker parent basename incremental
 
     for root in "${build_roots[@]}"; do
         while IFS= read -r -d '' marker; do
@@ -322,18 +451,21 @@ function discover_build_artifacts {
                 case $basename in
                     target)
                         if [[ -f $parent/Cargo.toml || -f $marker/.rustc_info.json ]]; then
-                            add_build_candidate "$marker"
+                            add_build_candidate "$marker" false rust
+                            while IFS= read -r -d '' incremental; do
+                                seen_incremental_candidates[$incremental]=$marker
+                            done < <(find -P "$marker" -xdev -mindepth 2 -maxdepth 3 -type d -name incremental -print0)
                         fi
                         ;;
                     node_modules)
-                        [[ -f $parent/package.json ]] && add_build_candidate "$marker"
+                        [[ -f $parent/package.json ]] && add_build_candidate "$marker" false node
                         ;;
                     .dart_tool)
-                        [[ -f $parent/pubspec.yaml ]] && add_build_candidate "$marker"
+                        [[ -f $parent/pubspec.yaml ]] && add_build_candidate "$marker" false dart
                         ;;
                     .gradle)
                         if [[ -f $parent/gradlew || -f $parent/settings.gradle || -f $parent/settings.gradle.kts ]]; then
-                            add_build_candidate "$marker"
+                            add_build_candidate "$marker" false gradle
                         fi
                         ;;
                 esac
@@ -344,22 +476,22 @@ function discover_build_artifacts {
             basename=${marker##*/}
             case $basename in
                 pubspec.yaml)
-                    add_build_candidate "$parent/build"
-                    add_build_candidate "$parent/.dart_tool"
+                    add_build_candidate "$parent/build" false flutter
+                    add_build_candidate "$parent/.dart_tool" false dart
                     ;;
                 pyvenv.cfg)
                     case ${parent##*/} in
-                        .venv|venv) add_build_candidate "$parent" ;;
+                        .venv|venv) add_build_candidate "$parent" false venv ;;
                     esac
                     ;;
                 CMakeCache.txt)
-                    add_build_candidate "$parent"
+                    add_cmake_candidate "$parent" false
                     ;;
                 coredata.dat)
-                    [[ ${parent##*/} == meson-private ]] && add_build_candidate "${parent%/*}"
+                    [[ ${parent##*/} == meson-private ]] && add_build_candidate "${parent%/*}" false meson
                     ;;
                 build.gradle|build.gradle.kts)
-                    add_build_candidate "$parent/build"
+                    add_build_candidate "$parent/build" false gradle
                     ;;
             esac
         done < <(find -P "$root" -xdev \
@@ -367,11 +499,35 @@ function discover_build_artifacts {
             \( -type d \( -name target -o -name node_modules -o -name .dart_tool -o -name .gradle \) -print0 -prune \) -o \
             \( -type f \( -name pubspec.yaml -o -name pyvenv.cfg -o -name CMakeCache.txt -o -name coredata.dat -o -name build.gradle -o -name build.gradle.kts \) -print0 \))
     done
+
+    # Only CMake's validated metadata can widen the default scan beyond roots.
+    # Explicit roots remain a strict scope boundary.
+    if ((${#requested_build_roots[@]} == 0)); then
+        while IFS= read -r -d '' root; do
+            path_is_below_build_root "$root/" && continue
+            while IFS= read -r -d '' marker; do
+                add_cmake_candidate "${marker%/*}" true
+            done < <(find -P "$root" -xdev \
+                \( -type d ! -readable -prune \) -o \
+                \( -type d \( -name .git -o -name target -o -name node_modules -o -name .venv -o -name venv -o -name .dart_tool -o -name .gradle \) -prune \) -o \
+                \( -type f -name CMakeCache.txt -print0 \))
+        done < <(find -P "$HOME" -xdev -mindepth 1 -maxdepth 1 -type d ! -name '.*' -print0)
+    fi
 }
 
 function remove_build_tree_if_selected {
     local path=$1
     local size
+
+    if [[ -n ${build_projects[$path]:-} ]]; then
+        generated_build_metadata cmake "$path" >/dev/null || return 0
+        collect_active_paths
+    fi
+
+    if tree_contains_runtime_installation "$path"; then
+        printf '  preserve-runtime %s\n' "$(display_path "$path")"
+        return 0
+    fi
 
     $all_reproducible || tree_is_stale "$path" || return 0
     size=$(allocated_bytes "$path")
@@ -388,6 +544,7 @@ function remove_build_tree_if_selected {
         return 0
     fi
 
+    selected_build_trees[$path]=1
     ((build_candidates += 1))
     build_candidate_bytes=$((build_candidate_bytes + size))
     printf '  %s %s (%s)\n' "$($apply && echo remove || echo would-remove)" "$(display_path "$path")" "$(human_bytes "$size")"
@@ -398,27 +555,42 @@ function remove_build_tree_if_selected {
 }
 
 function remove_build_artifacts {
-    local path
+    local path target selected skip
 
     discover_build_artifacts
     # Cache/tool cleanup and discovery can be slow. Refresh process state here
     # so a build that started after the initial snapshot is still protected.
     collect_active_paths
     while IFS= read -r -d '' path; do
+        [[ -n $path ]] || continue
         remove_build_tree_if_selected "$path"
     done < <(printf '%s\0' "${!seen_build_candidates[@]}" | sort -z)
+    for path in "${!seen_incremental_candidates[@]}"; do
+        target=${seen_incremental_candidates[$path]}
+        skip=false
+        for selected in "${!selected_build_trees[@]}"; do
+            [[ $path != "$selected"/* ]] || skip=true
+        done
+        $skip || remove_incremental_if_selected "$path" "$target"
+    done
 }
 
 function remove_cache_files {
     local root=$1
     local remove_all=${2:-false}
     local manifest=$temporary_directory/cache-files
+    local candidates=$temporary_directory/cache-candidates
     local path size count=0 bytes=0
     local -a find_age=()
 
     [[ -d $root ]] || return 0
     root=$(realpath -e -- "$root") || return 0
     [[ $root != / && $root != "$HOME" ]] || die "refusing unsafe cache root: $root"
+
+    if $remove_all && tree_contains_runtime_installation "$root"; then
+        printf '  preserve-runtime %s\n' "$(display_path "$root")"
+        return 0
+    fi
 
     if $remove_all && tree_is_in_use "$root"; then
         size=$(allocated_bytes "$root")
@@ -450,9 +622,12 @@ function remove_cache_files {
     fi
 
     find_age=(! -newer "$cutoff_file")
-    find -P "$root" -xdev \( -type f -o -type l \) "${find_age[@]}" -print0 > "$manifest"
+    find -P "$root" -xdev \( -type f -o -type l \) "${find_age[@]}" -print0 > "$candidates"
+    : > "$manifest"
 
     while IFS= read -r -d '' path; do
+        tree_contains_runtime_installation "$path" && continue
+        printf '%s\0' "$path" >> "$manifest"
         ((count += 1))
         if [[ -f $path ]]; then
             size=$(stat -c '%b * %B' -- "$path" | awk '{print $1 * $3}')
@@ -461,7 +636,7 @@ function remove_cache_files {
         if $verbose; then
             printf '  %s %s\n' "$($apply && echo remove || echo would-remove)" "$(display_path "$path")"
         fi
-    done < "$manifest"
+    done < "$candidates"
 
     filesystem_candidates=$((filesystem_candidates + count))
     filesystem_candidate_bytes=$((filesystem_candidate_bytes + bytes))
@@ -469,6 +644,7 @@ function remove_cache_files {
     if $apply && ((count > 0)); then
         run_privileged xargs -0 -r rm -f -- < "$manifest"
         while IFS= read -r -d '' path; do
+            tree_contains_runtime_installation "$path" && continue
             rmdir -- "$path" 2>/dev/null || true
         done < <(find -P "$root" -xdev -depth -mindepth 1 -type d -empty -print0)
     fi
@@ -596,7 +772,35 @@ function clean_docker {
     fi
 }
 
+if $docker_only; then
+    clean_docker
+    exit 0
+fi
+
 initialize_build_roots
+if $build_inventory; then
+    discover_build_artifacts
+    for path in "${!seen_build_candidates[@]}"; do
+        project=${path%/*}
+        git_root=$(git -C "$path" rev-parse --show-toplevel 2>/dev/null) || git_root=
+        [[ -z $git_root || $git_root == "$HOME" ]] || project=$git_root
+        project=${build_projects[$path]:-$project}
+        printf '%s\0%s\0%s\0%s\0' "${build_kinds[$path]}" "$path" "$project" ''
+    done
+    for path in "${!seen_incremental_candidates[@]}"; do
+        target=${seen_incremental_candidates[$path]}
+        printf '%s\0%s\0%s\0%s\0' incremental "$path" "${target%/*}" "$target"
+    done
+    exit 0
+fi
+
+lock_path=${XDG_RUNTIME_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}}/cache-clean.lock
+mkdir -p -- "${lock_path%/*}"
+exec {cleanup_lock}>"$lock_path"
+if ! flock --nonblock "$cleanup_lock"; then
+    echo 'Another cache-clean run is active; skipping.'
+    exit 0
+fi
 collect_active_paths
 root_used_before=$(df --output=used -B1 / | tail -n 1 | tr -d ' ')
 
@@ -623,11 +827,7 @@ fi
 echo
 echo "Reproducible build artifacts"
 if $clean_builds; then
-    if ((${#build_roots[@]} == 0)); then
-        echo "  no build roots found"
-    else
-        remove_build_artifacts
-    fi
+    remove_build_artifacts
 else
     echo "  skipped"
 fi

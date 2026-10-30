@@ -1,0 +1,18 @@
+[Unit]
+Description=Reclaim disk space with staged LRU cache cleanup
+
+[Service]
+Type=oneshot
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=CACHE_CLEAN_LOW_WATERMARK=5%%
+Environment=CACHE_CLEAN_HIGH_WATERMARK=8%%
+EnvironmentFile=-%h/.config/cache-clean.conf
+ExecStart=%h/.local/bin/cache-clean --pressure --apply --retry-after 21600
+Nice=19
+IOSchedulingClass=idle
+CPUWeight=10
+CPUQuota=20%
+IOWeight=10
+UMask=0077
+NoNewPrivileges=yes
+TimeoutStartSec=5min

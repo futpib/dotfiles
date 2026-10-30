@@ -1,0 +1,11 @@
+[Unit]
+Description=Check disk pressure every five minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitInactiveSec=5min
+RandomizedDelaySec=15s
+Unit=cache-clean.service
+
+[Install]
+WantedBy=timers.target
