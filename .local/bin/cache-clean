@@ -355,6 +355,7 @@ class Processes:
         self.paths = set()
         self.cwd = set()
         self.compilers = set()
+        self.builders = set()
         self.commands = set()
         for process in Path("/proc").iterdir():
             if not process.name.isdigit():
@@ -368,7 +369,10 @@ class Processes:
                 exe = Path(os.readlink(process / "exe"))
                 self.cwd.add(cwd)
                 paths = {exe}
-                for arg in (process / "cmdline").read_bytes().split(b"\0"):
+                # Our selection/protection arguments name candidates, not users
+                # of those trees. Keep our actual cwd, mappings and open files.
+                arguments = [] if process.name == str(os.getpid()) else (process / "cmdline").read_bytes().split(b"\0")
+                for arg in arguments:
                     value = os.fsdecode(arg)
                     if not value:
                         continue
@@ -391,6 +395,11 @@ class Processes:
                 self.paths.update(paths)
                 if command in ("cargo", "rustc", "clippy-driver"):
                     self.compilers.update(paths | {cwd})
+                if (command in ("cargo", "rustc", "clippy-driver", "java", "gradle", "flutter",
+                                "cmake", "ninja", "make", "gmake", "npm", "pnpm", "bun", "node",
+                                "sh", "bash", "zsh", "fish", "dash", "perl", "ruby")
+                        or command.startswith(("python", "dart"))):
+                    self.builders.update(paths | {cwd})
             except OSError:
                 continue
 
@@ -398,6 +407,8 @@ class Processes:
         # candidate. Membership preserves the same component-boundary checks.
         self.active_trees = self.ancestors(self.paths | self.cwd)
         self.compiler_trees = self.ancestors(self.compilers)
+        self.build_trees = self.ancestors(self.builders)
+        self.child_working_trees = self.ancestors({path.parent for path in self.cwd})
 
     @staticmethod
     def ancestors(paths):
@@ -415,6 +426,16 @@ class Processes:
             return True
         if candidate.kind == "incremental":
             return candidate.project in self.compiler_trees
+        if candidate.kind == "rust-profile":
+            # Cargo's profile lock serializes deletion with builds. A running
+            # binary protects its own profile, not every profile in the repo.
+            return candidate.project in self.build_trees
+        if shared_tools and candidate.kind in ("flutter", "dart"):
+            # Nested Flutter apps have their own build roots. Repository-wide
+            # build tools still block cleanup; unrelated daemons do not.
+            return (candidate.path.parent in self.active_trees
+                    or candidate.project in self.build_trees
+                    or candidate.project in self.child_working_trees)
         if candidate.kind == "cache":
             return False
         if candidate.kind == "tool":
@@ -526,9 +547,9 @@ class Cleaner:
             override = self.changed_directories.get(entry)
             if override and override[0] == st.st_mtime_ns:
                 modified = override[1]
-            # Directory atime reflects enumeration, including find in discovery.
-            # File atime/mtime records approximate use on relatime filesystems.
-            newest = max(newest, modified if stat.S_ISDIR(st.st_mode) else max(modified, st.st_atime))
+            # Discovery updates directory and symlink atime without using the
+            # build. Only regular-file atime records approximate content use.
+            newest = max(newest, max(modified, st.st_atime) if stat.S_ISREG(st.st_mode) else modified)
             inode = (st.st_dev, st.st_ino)
             if stat.S_ISREG(st.st_mode) and st.st_nlink == 1 and inode not in inodes:
                 size += st.st_blocks * 512
@@ -739,6 +760,11 @@ class Cleaner:
                     return False
                 lock = path / ".cargo-lock"
                 if not lock.is_file() or lock.is_symlink() or not all((path / name).is_dir() and not (path / name).is_symlink() for name in ("deps", ".fingerprint")):
+                    return False
+                # Escalating to a whole profile must not bypass the incremental
+                # cache's refusal to delete unknown files or locked sessions.
+                sessions = path / "incremental"
+                if sessions.exists() and incremental(sessions, target, 0, False)[0] not in ("selected", "preserve-empty"):
                     return False
             data = json.loads(read_generated(target / ".rustc_info.json"))
             return isinstance(data, dict) and isinstance(data.get("outputs"), dict) and isinstance(data.get("rustc_fingerprint"), int)
@@ -1178,7 +1204,7 @@ def run_lock():
 def main():
     parser = argparse.ArgumentParser(prog="cache-clean",
         description="Remove reproducible caches and build artifacts. Defaults to a seven-day dry run.",
-        epilog="Active projects, tracked files, runtime installations, and .cache-clean-keep markers "
+        epilog="Active builds, running artifacts, tracked files, runtime installations, and .cache-clean-keep markers "
                "are preserved. Docker volumes and running containers are never pruned. "
                "Pressure cleanup progresses through caches, incremental sessions, and inactive builds "
                "in approximate least-recently-used order, stopping at the high watermark. "
