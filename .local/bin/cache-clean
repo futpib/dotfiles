@@ -903,7 +903,9 @@ class Cleaner:
             self.clear_retry()
             return 0
         if not self.retry_ready():
-            return 0
+            # Pressure is still unresolved; a skipped retry must not erase the
+            # failed status of the previous exhausted or interrupted attempt.
+            return 1
         if not self.args.apply:
             self.virtual_free = initial
             log("dry run: available after removals is a conservative estimate, excluding hard-linked files")
