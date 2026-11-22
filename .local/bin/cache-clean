@@ -154,6 +154,132 @@ HOUR = 3600
 AGES = (("7d", WEEK), ("3d", 3 * 86400), ("1d", 86400), ("6h", 6 * HOUR), ("1h", HOUR))
 TOOL_CACHES = (".gradle/caches", ".gradle/wrapper/dists", ".cargo/registry/cache", ".cargo/registry/src",
                ".cargo/git", ".npm/_cacache", ".pub-cache", ".bun/install/cache")
+POLICY_FILE = ".cache-clean"
+
+
+class CleanupRules:
+    """Use Git's matcher in a private tree containing only cleanup policies."""
+
+    def __init__(self):
+        self.cached = {}
+        self.temporary = None
+        self.copied = set()
+        self.env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+        self.env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL="/dev/null")
+
+    def __del__(self):
+        if self.temporary is not None:
+            self.temporary.cleanup()
+
+    def refresh(self):
+        self.cached.clear()
+
+    def sources(self, directory):
+        if directory not in self.cached:
+            sources = dict(self.sources(directory.parent)) if directory != directory.parent else {}
+            policy = directory / POLICY_FILE
+            try:
+                st = policy.lstat()
+            except FileNotFoundError:
+                pass
+            else:
+                if (not stat.S_ISREG(st.st_mode) or st.st_uid != os.geteuid()
+                        or policy.parent.resolve() != policy.parent):
+                    raise ValueError(f"unsafe cleanup policy: {policy}")
+                contents = read_generated(policy, 1024 * 1024 + 1)
+                if len(contents) > 1024 * 1024:
+                    raise ValueError(f"oversized cleanup policy: {policy}")
+                sources[policy] = contents
+            self.cached[directory] = sources
+        return self.cached[directory]
+
+    def may_reclaim(self, directory):
+        return any(line and line[0] not in "#!" and line.strip()
+                   for contents in self.sources(directory).values() for line in contents.splitlines())
+
+    def private_tree(self):
+        if self.temporary is None:
+            self.temporary = tempfile.TemporaryDirectory(prefix="cache-clean-patterns-")
+            subprocess.run(["git", "init", "-q", "--template=", self.temporary.name],
+                           check=True, env=self.env, capture_output=True)
+        return Path(self.temporary.name)
+
+    def reclaim_paths(self, scope, root):
+        policies = self.sources(scope)
+        anchor = next(iter(policies)).parent
+        # Use a private, empty index and only the explicit per-directory rules.
+        # Normal .gitignore files, repository config and global excludes do not
+        # authorize deletion. Git enumerates only matching files, avoiding
+        # per-path queries for unrelated experiment data.
+        result = subprocess.run(
+            ["git", "--literal-pathspecs", "--git-dir=" + str(self.private_tree() / ".git"),
+             "--work-tree=" + str(anchor), "-C", str(anchor), "-c", "core.ignoreCase=false",
+             "ls-files", "-z", "--others", "--ignored",
+             "--exclude-per-directory=" + POLICY_FILE, "--", str(scope.relative_to(anchor))],
+            check=True, capture_output=True, env=self.env)
+        paths = set()
+        for name in result.stdout.split(b"\0"):
+            if not name:
+                continue
+            relative = Path(os.fsdecode(name))
+            if relative.is_absolute() or ".." in relative.parts:
+                raise ValueError("Git returned a path outside the cleanup scope")
+            path = anchor / relative
+            if path != root and below(path, root):
+                paths.add(path)
+        ancestors = {parent for path in paths for parent in path.parents if parent != root and below(parent, root)}
+        selected = set()
+        for path, state in sorted(self.matches([(path, True) for path in ancestors]).items(),
+                                  key=lambda item: (len(item[0].parts), str(item[0]))):
+            if state is True and not any(parent in selected for parent in path.parents):
+                selected.add(path)
+        selected.update(path for path in paths if not any(parent in selected for parent in path.parents))
+        return sorted(selected, key=lambda path: (len(path.parts), str(path)))
+
+    def matches(self, entries):
+        # Include directories themselves: Git reports a negative directory rule
+        # there, while its descendants otherwise look like unmatched paths.
+        queries = dict(entries)
+        for path in list(queries):
+            queries.update((parent, True) for parent in path.parents if parent != Path("/"))
+        policies = {}
+        for path in queries:
+            policies.update(self.sources(path.parent))
+        if not policies:
+            return {path: False if path.name == POLICY_FILE else None for path, _ in entries}
+        root = self.private_tree()
+        for obsolete in self.copied - policies.keys():
+            (root / obsolete.parent.relative_to("/") / ".gitignore").unlink(missing_ok=True)
+        for policy, contents in policies.items():
+            destination = root / policy.parent.relative_to("/") / ".gitignore"
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_text(contents)
+        self.copied = set(policies)
+        ordered = sorted(queries, key=lambda path: (len(path.parts), str(path)))
+        for path in ordered:
+            destination = root / path.relative_to("/")
+            if queries[path]:
+                destination.mkdir(parents=True, exist_ok=True)
+            else:
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                if destination.is_dir():
+                    shutil.rmtree(destination)
+        result = subprocess.run(
+            ["git", "-C", str(root), "-c", "core.excludesFile=/dev/null", "-c", "core.ignoreCase=false",
+             "check-ignore", "--no-index", "--verbose", "--non-matching", "-z", "--stdin"],
+            input=b"".join(os.fsencode(path.relative_to("/")) + b"\0" for path in ordered),
+            capture_output=True, env=self.env)
+        fields = result.stdout.split(b"\0")
+        if result.returncode not in (0, 1) or len(fields) != 4 * len(ordered) + 1:
+            raise ValueError(f"cannot evaluate cleanup policy: {os.fsdecode(result.stderr)}")
+        states = {}
+        for index, path in enumerate(ordered):
+            pattern = fields[4 * index + 2]
+            state = not pattern.startswith(b"!") if pattern else None
+            if state is None and states.get(path.parent) is False:
+                state = False
+            states[path] = False if path.name == POLICY_FILE else state
+        return {path: states[path] for path, _ in entries}
 
 
 def below(path, root):
@@ -179,8 +305,8 @@ def walk(path, device):
             with os.scandir(fd) as entries:
                 children = [path / entry.name for entry in entries]
             for child in children:
-                if child.name == ".git":
-                    raise ValueError(f"embedded source repository: {path}")
+                if child.name in (".git", POLICY_FILE):
+                    raise ValueError(f"protected descendant: {child}")
                 yield from walk(child, device)
         finally:
             os.close(fd)
@@ -235,7 +361,7 @@ class Candidate:
 
 
 class BuildInventory:
-    def __init__(self, home, requested_roots):
+    def __init__(self, home, requested_roots, rules=None):
         self.home = home
         self.external = not requested_roots
         self.roots = []
@@ -248,6 +374,7 @@ class BuildInventory:
         self.builds = {}
         self.incrementals = {}
         self.projects = {}
+        self.rules = rules or CleanupRules()
 
     def project(self, path):
         if path not in self.projects:
@@ -259,7 +386,7 @@ class BuildInventory:
         return self.projects[path]
 
     def add(self, path, kind, source=None, external=False):
-        if path.is_symlink() or not path.is_dir():
+        if path.is_symlink() or not (path.is_dir() or kind == "declared" and path.is_file()):
             return
         canonical = path.resolve()
         if canonical != path:
@@ -267,11 +394,12 @@ class BuildInventory:
         if not any(root in path.parents for root in self.roots):
             if not external or self.home not in path.parents:
                 raise ValueError(f"refusing build path outside configured roots: {path}")
-        if any(below(path, existing) for existing in self.builds):
+        if path in self.builds or any(parent in self.builds for parent in path.parents):
             return
-        for existing in list(self.builds):
-            if below(existing, path):
-                del self.builds[existing]
+        if path.is_dir():
+            for existing in list(self.builds):
+                if below(existing, path):
+                    del self.builds[existing]
         self.builds[path] = Candidate(kind, path, self.project(source or path.parent))
 
     def cmake(self, path, external=False):
@@ -303,8 +431,22 @@ class BuildInventory:
         pruned = {".git", "target", "node_modules", ".dart_tool", ".gradle"}
         if external:
             pruned.update((".venv", "venv"))
+        reclaim_roots = []
+        if not external:
+            try:
+                if self.rules.may_reclaim(root):
+                    reclaim_roots.append(root)
+            except (OSError, ValueError) as error:
+                log(f"preserve cleanup policy below {root}: {error}")
+
         for folder, names, files in os.walk(root, followlinks=False):
             parent = Path(folder)
+            try:
+                if not external and POLICY_FILE in files and self.rules.may_reclaim(parent):
+                    if parent not in reclaim_roots:
+                        reclaim_roots.append(parent)
+            except (OSError, ValueError) as error:
+                log(f"preserve cleanup policy below {parent}: {error}")
             descend = []
             for name in names:
                 path = parent / name
@@ -342,6 +484,14 @@ class BuildInventory:
                         self.add(parent.parent, "meson")
                     elif name in ("build.gradle", "build.gradle.kts"):
                         self.add(parent / "build", "gradle")
+        for scope in reclaim_roots:
+            try:
+                for path in self.rules.reclaim_paths(scope, root):
+                    if (path.name not in (".git", POLICY_FILE, ".cargo-lock") and not path.name.endswith(".lock")
+                            and path.stat().st_dev == device):
+                        self.add(path, "declared")
+            except (OSError, ValueError, subprocess.SubprocessError) as error:
+                log(f"preserve cleanup policy below {scope}: {error}")
 
     def discover(self):
         for root in self.roots:
@@ -481,6 +631,7 @@ class Cleaner:
         self.removed = set()
         self.changed_directories = {}
         self.inventory = None
+        self.rules = CleanupRules()
         self.virtual_free = None
         self.count = 0
         self.tracked_cache = {}
@@ -533,6 +684,25 @@ class Cleaner:
     def protected_path(self, path):
         return any(below(path, root) or below(root, path) for root in self.protected)
 
+    def policy_allows(self, item):
+        if item.path.name == POLICY_FILE:
+            return False
+        if item.path.is_dir() and os.path.lexists(item.path / POLICY_FILE):
+            return False
+        if not self.rules.sources(item.path.parent):
+            return item.kind != "declared"
+        state = self.rules.matches([(item.path, item.path.is_dir())])[item.path]
+        if state is False or state is None and item.kind == "declared":
+            return False
+        entries = [(path, stat.S_ISDIR(st.st_mode)) for path, st in walk(item.path, self.removal_device(item.path))]
+        # Git propagates an excluded directory to all its descendants; child
+        # exceptions require the directory itself to remain included. The walk
+        # above still rejects embedded policies and repositories before deletion.
+        if state is True:
+            return True
+        states = self.rules.matches(entries).values()
+        return all(state is not False for state in states)
+
     def was_removed(self, path):
         if not self.removed:
             return False
@@ -584,7 +754,7 @@ class Cleaner:
 
     def load_inventory(self):
         if self.inventory is None:
-            self.inventory = BuildInventory(self.home, self.args.build_root).discover()
+            self.inventory = BuildInventory(self.home, self.args.build_root, self.rules).discover()
         return self.inventory
 
     def cache_candidates(self):
@@ -736,7 +906,7 @@ class Cleaner:
                     continue
                 if candidate.path.parent.resolve() != candidate.path.parent:
                     continue
-                if (candidate.project / ".cache-clean-keep").exists() or (candidate.path / ".cache-clean-keep").exists():
+                if not self.policy_allows(candidate):
                     continue
                 if self.was_removed(candidate.path):
                     continue
@@ -753,6 +923,8 @@ class Cleaner:
         path = item.path
         if item.kind in ("cache", "tool"):
             return True
+        if item.kind == "declared":
+            return True  # The policy is checked separately for every candidate kind.
         if item.kind == "cmake":
             source = cmake_source(path)
             return source is not None and below(source, item.project)
@@ -799,6 +971,9 @@ class Cleaner:
         return parents
 
     def remove(self, item, apply=True):
+        self.rules.refresh()
+        if not self.policy_allows(item):
+            raise ValueError("retained or no longer selected by cleanup policy")
         if item.kind == "cache":
             if apply:
                 item.path.unlink()
@@ -987,8 +1162,7 @@ class AgeCleaner(Cleaner):
     def protected_item(self, item):
         if self.was_removed(item.path):
             return True
-        if (self.protected_path(item.path) or (item.project / ".cache-clean-keep").exists()
-                or (item.path / ".cache-clean-keep").exists()):
+        if self.protected_path(item.path) or not self.policy_allows(item):
             log(f"preserve-runtime {self.display(item.path)}")
             return True
         if item.path.parent.resolve() != item.path.parent:
@@ -1030,6 +1204,7 @@ class AgeCleaner(Cleaner):
 
     def select_incremental(self, item):
         try:
+            self.rules.refresh()
             if self.protected_item(item):
                 return
             cutoff = 0 if self.args.all_reproducible else self.cutoff
@@ -1211,8 +1386,12 @@ def run_lock():
 def main():
     parser = argparse.ArgumentParser(prog="cache-clean",
         description="Remove reproducible caches and build artifacts. Defaults to a seven-day dry run.",
-        epilog="Active builds, running artifacts, tracked files, runtime installations, and .cache-clean-keep markers "
+        epilog="Active builds, running artifacts, tracked files, runtime installations, and cleanup policies "
                "are preserved. Docker volumes and running containers are never pruned. "
+               "Use .cache-clean files with Git ignore syntax: patterns select disposable paths, !patterns retain them. "
+               "The last matching rule wins; nested files override parent rules. Unmatched paths use normal discovery. "
+               "As in Git, a child exception requires its parent directory not to be excluded. "
+               "Policy files and directories containing them are never removed as a unit. "
                "Pressure cleanup progresses through caches, incremental sessions, and inactive builds "
                "in approximate least-recently-used order, stopping at the high watermark. "
                "Enable cache-clean.timer for checks every five minutes; configure watermarks in "
