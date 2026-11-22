@@ -111,10 +111,15 @@ def incremental(path, target, cutoff, apply, only_session=None):
                 if not regular(crate / (match[1] + ".lock")):
                     return "preserve-ambiguous", 0
                 files = list(entry.iterdir())
-                if not files or not (entry / "dep-graph.bin").is_file():
+                # Interrupted rustc sessions retain the -working suffix and
+                # may be empty or contain only a staging dependency graph.
+                # The Cargo/session locks and age checks still apply.
+                working = entry.name.endswith("-working")
+                if not working and (not files or not (entry / "dep-graph.bin").is_file()):
                     return "preserve-ambiguous", 0
                 for file in files:
-                    if not regular(file) or not re.fullmatch(r"(?:[a-z0-9]+\.o|dep-graph\.bin|query-cache\.bin|work-products\.bin|metadata\.rmeta)", file.name):
+                    known = re.fullmatch(r"(?:[a-z0-9]+\.o|dep-graph\.bin|query-cache\.bin|work-products\.bin|metadata\.rmeta)", file.name)
+                    if not regular(file) or not (known or (working and file.name == "dep-graph.part.bin")):
                         return "preserve-ambiguous", 0
                 entries.extend(files)
                 sessions.append(entry)
