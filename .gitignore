@@ -98,6 +98,7 @@
 !.local/bin/xmonad-kde-settings
 !.local/bin/xmonad
 !.local/bin/xmonad-session
+!.local/bin/rofi-run
 !.local/bin/ffmpeg-mute
 !.local/bin/chrome-headless
 !.local/bin/emacsclient-wrapper

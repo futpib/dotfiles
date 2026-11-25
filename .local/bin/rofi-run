@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+
+# Rofi can launch commands before releasing its X11 pointer grab. Collect the
+# selected argv as NUL-separated fields and launch it only after rofi exits.
+exec {selection}< <(rofi -show run \
+    -run-command "printf '%s\\0' {cmd}" \
+    -run-shell-command "printf '%s\\0' {terminal} -e {cmd}" "$@")
+rofi_pid=$!
+mapfile -d '' -t command <&"$selection"
+exec {selection}<&-
+wait "$rofi_pid" || exit "$?"
+
+if ((${#command[@]})); then
+    exec "${command[@]}"
+fi

@@ -159,7 +159,7 @@ keys' conf@(XConfig {XMonad.modMask = modMask}) = M.fromList $
         workspaceKeys = [xK_grave, xK_1, xK_2, xK_3, xK_4, xK_5, xK_6, xK_7, xK_8, xK_9, xK_0, xK_minus, xK_equal, xK_BackSpace, xK_Home]
         altMask = mod1Mask
 
-spawnRunner = spawn "rofi -show run"
+spawnRunner = spawn "rofi-run"
 spawnSwitcher = spawn "rofi -show window"
 spawnClipboardManager = spawn "clipcat-menu"
 spawnClipboardManagerRemove = spawn "clipcat-menu remove"
