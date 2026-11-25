@@ -81,6 +81,9 @@
 !.config/systemd/user/cache-clean.timer
 !.config/systemd/user/xmonad-kde-settings.service
 !.config/systemd/user/xmonad-screen-lock.service
+!.config/systemd/user/app-dev.lizardbyte.app.Sunshine.service.d/
+.config/systemd/user/app-dev.lizardbyte.app.Sunshine.service.d/*
+!.config/systemd/user/app-dev.lizardbyte.app.Sunshine.service.d/override.conf
 
 !.config/fontconfig
 .config/fontconfig/*
@@ -106,6 +109,15 @@
 !.local/bin/translate-clipboard
 !.local/bin/remove-wine-file-association
 !.local/bin/nvm-package-json-node-version
+!.local/bin/sunshine-launch
+!.local/bin/sunshine-display
+
+!.local/src/
+.local/src/*
+!.local/src/sunshine-virtual-display/
+.local/src/sunshine-virtual-display/*
+!.local/src/sunshine-virtual-display/main.c
+!.local/src/sunshine-virtual-display/Makefile
 
 !.local/share/
 .local/share/*

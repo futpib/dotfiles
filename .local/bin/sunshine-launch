@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# Start Sunshine with settings worked out for this machine. The user unit
+# drop-in app-dev.lizardbyte.app.Sunshine.service.d/override.conf runs this in
+# place of /usr/bin/sunshine. Settings go on the command line as name=value,
+# which overrides ~/.config/sunshine/sunshine.conf and is never saved to it.
+#
+# Hybrid graphics (the boot display runs on a non-NVIDIA GPU and an NVIDIA
+# card is also present): encode with VA-API on the display GPU and hide every
+# NVIDIA device node from Sunshine, so streaming never wakes the NVIDIA card.
+#
+# KDE Plasma on Wayland: capture through KWin, which keeps working while the
+# screens are blanked, and give each stream a virtual screen at the client's
+# resolution (sunshine-display). The sunshine-virtual-display helper is built
+# from ~/.local/src on first use.
+#
+# Any other machine runs Sunshine with its own settings.
+set -euo pipefail
+
+export PATH="$HOME/.local/bin:$PATH"
+log() { echo "sunshine-launch: $*" >&2; }
+
+args=()
+sandbox=()
+
+display_render=
+nvidia=()
+for card in /sys/class/drm/card*; do
+	[[ $card =~ /card[0-9]+$ ]] || continue # skip connectors such as card1-eDP-1
+	render=
+	for node in "$card"/device/drm/renderD*; do
+		[[ -e $node ]] && render=/dev/dri/${node##*/}
+	done
+	if [[ $(cat "$card/device/vendor" 2>/dev/null) == 0x10de ]]; then
+		nvidia+=("/dev/dri/${card##*/}" ${render:+"$render"})
+	elif [[ $(cat "$card/device/boot_vga" 2>/dev/null) == 1 && -n $render ]]; then
+		display_render=$render
+	fi
+done
+
+if [[ -n $display_render && ${#nvidia[@]} -gt 0 ]]; then
+	for node in /dev/nvidia*; do
+		[[ -e $node ]] && nvidia+=("$node")
+	done
+	if command -v bwrap >/dev/null; then
+		# systemd's inaccessible nodes: opening the masked paths fails with EACCES.
+		sandbox=(bwrap --dev-bind / /)
+		for node in "${nvidia[@]}"; do
+			if [[ -d $node ]]; then
+				sandbox+=(--bind /run/systemd/inaccessible/dir "$node")
+			else
+				sandbox+=(--bind /run/systemd/inaccessible/chr "$node")
+			fi
+		done
+		sandbox+=(--)
+	else
+		log "bwrap is missing, so Sunshine can still wake the NVIDIA card"
+	fi
+	mesa_egl=/usr/share/glvnd/egl_vendor.d/50_mesa.json
+	if [[ -e $mesa_egl ]]; then
+		export __EGL_VENDOR_LIBRARY_FILENAMES=$mesa_egl __GLX_VENDOR_LIBRARY_NAME=mesa
+	fi
+	args+=(encoder=vaapi "adapter_name=$display_render")
+	log "hybrid graphics: encoding on $display_render, hiding ${nvidia[*]}"
+fi
+
+if [[ ${XDG_SESSION_TYPE:-} == wayland ]] && pgrep -u "$UID" -x kwin_wayland >/dev/null; then
+	args+=(capture=kwin)
+	if make -s -C "$HOME/.local/src/sunshine-virtual-display" install >&2; then
+		display=$HOME/.local/bin/sunshine-display
+		args+=(
+			output_name=Virtual-Sunshine
+			"global_prep_cmd=[{\"do\":\"$display on\",\"undo\":\"$display off\",\"elevated\":false}]"
+		)
+		log "KDE Wayland: KWin capture, a virtual screen per stream"
+	else
+		log "KDE Wayland: KWin capture; sunshine-virtual-display did not build, so streams show the real screens"
+	fi
+fi
+
+exec "${sandbox[@]}" sunshine "${args[@]}"

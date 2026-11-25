@@ -1,0 +1,75 @@
+#!/bin/sh
+# Sunshine prep command that sunshine-launch sets up on KDE Plasma (Wayland):
+# give each stream a native desktop.
+#   on   create a KWin virtual screen at the client's resolution (Sunshine
+#        exports SUNSHINE_CLIENT_WIDTH/HEIGHT), scale it for HiDPI, and make it
+#        the primary and only enabled screen. Sunshine captures it through
+#        output_name=Virtual-Sunshine.
+#   off  turn the screens that were on back on, restore the primary screen,
+#        drop the virtual screen, and blank the screens.
+# The virtual screen lives in the transient user unit sunshine-virtual-display,
+# bound to Sunshine's unit: if Sunshine dies mid-stream the screen goes away
+# and KWin brings the previous layout back by itself.
+set -u
+VIRT=Virtual-Sunshine
+SUNSHINE_UNIT=app-dev.lizardbyte.app.Sunshine.service
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}" QT_QPA_PLATFORM=wayland
+STATE=$XDG_RUNTIME_DIR/sunshine-display
+
+kd() { kscreen-doctor "$@" >/dev/null 2>&1; }
+outputs() { kscreen-doctor -o 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g'; }
+has_virt() { outputs | awk -v v="$VIRT" '$1 == "Output:" && $3 == v { found = 1 } END { exit !found }'; }
+
+case "${1:-}" in
+on)
+  w=${SUNSHINE_CLIENT_WIDTH:-1920}
+  h=${SUNSHINE_CLIENT_HEIGHT:-1080}
+  # Keep about a 1440p workspace on large clients, with sharper text.
+  if [ "$h" -ge 2160 ]; then scale=1.5
+  elif [ "$h" -ge 1600 ]; then scale=1.25
+  else scale=1; fi
+  # Remember the real layout, unless a virtual screen from an earlier launch
+  # is still up (the real screens are off then, and the record is still valid).
+  if ! has_virt; then
+    mkdir -p "$STATE"
+    outputs | awk '$1 == "Output:" { name = $3 } $1 == "enabled" && name !~ /^Virtual-/ { print name }' >"$STATE/enabled"
+    outputs | awk '$1 == "Output:" { name = $3 } $1 == "priority" && $2 == 1 { print name; exit }' >"$STATE/primary"
+  fi
+  systemctl --user stop sunshine-virtual-display.service 2>/dev/null
+  systemd-run --user --quiet --collect --unit=sunshine-virtual-display \
+    -p BindsTo="$SUNSHINE_UNIT" -p After="$SUNSHINE_UNIT" \
+    "$HOME/.local/bin/sunshine-virtual-display" Sunshine "$w" "$h" || exit 0
+  for _ in $(seq 50); do has_virt && break; sleep 0.1; done
+  has_virt || exit 0 # no virtual screen: Sunshine falls back to a real one
+  set -- "output.$VIRT.scale.$scale" "output.$VIRT.priority.1"
+  if [ -f "$STATE/enabled" ]; then
+    while read -r name; do
+      set -- "$@" "output.$name.disable"
+    done <"$STATE/enabled"
+  fi
+  kd "$@"
+  ;;
+off)
+  set --
+  if [ -f "$STATE/enabled" ]; then
+    while read -r name; do
+      set -- "$@" "output.$name.enable"
+    done <"$STATE/enabled"
+  fi
+  primary=$(cat "$STATE/primary" 2>/dev/null)
+  if [ -n "$primary" ] && [ "$primary" != "$VIRT" ]; then
+    set -- "$@" "output.$primary.priority.1"
+  fi
+  [ $# -gt 0 ] && kd "$@"
+  systemctl --user stop sunshine-virtual-display.service 2>/dev/null
+  rm -f "$STATE/enabled" "$STATE/primary"
+  # A streaming host usually has nobody in front of it.
+  kd --dpms off
+  ;;
+*)
+  echo "usage: sunshine-display on|off" >&2
+  exit 2
+  ;;
+esac
+exit 0
