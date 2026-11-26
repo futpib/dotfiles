@@ -108,7 +108,6 @@
 !.local/bin/journal-to-notifications
 !.local/bin/translate-clipboard
 !.local/bin/remove-wine-file-association
-!.local/bin/nvm-package-json-node-version
 !.local/bin/sunshine-launch
 !.local/bin/sunshine-display
 

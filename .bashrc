@@ -80,19 +80,6 @@ if echo "$-" | grep i > /dev/null; then
         printf "${protocol}${Green}${USER}${IBlack}@$(uname -n)${Color_Off} ${pwd}${IBlack}"
     }
 
-    __nvm_use_last_pwd=""
-    __nvm_use () {
-        if [[ "$PWD" != "$__nvm_use_last_pwd" && ( -f ".nvmrc" || -f "package.json" ) ]]; then
-            __nvm_use_last_pwd="$PWD"
-            local resolved_version="$(nvm-package-json-node-version)"
-            if [[ "${resolved_version}" != "" ]]; then
-                nvm use "${resolved_version}"
-            elif [[ -f ".nvmrc" ]]; then
-                nvm use
-            fi
-        fi
-    }
-
     __refresh_history () {
         history -a
         history -c
@@ -165,8 +152,6 @@ if echo "$-" | grep i > /dev/null; then
         local spent
         spent="$(__displaytime $(( $(date '+%s') - last_started )))"
 
-        __nvm_use
-
         printf "${BWhite}${On_Red}↵${Color_Off}\n"
         __hr "${IBlack}finished at [$(date '+%H:%M:%S')] (took $spent) [$(__print_part_in_brackets)] ${important_vars}"\
             "${returned_full}"\
@@ -181,8 +166,6 @@ if echo "$-" | grep i > /dev/null; then
 
     PROMPT_COMMAND='__prompt_command; __set_terminal_title'
     PS0='$(__ps0_preexec)\n'
-
-    __nvm_use
 
     __hr "${IBlack}[$(date '+%H:%M:%S')] [$(__print_part_in_brackets)] "\
         "${IBlack} bash $BASH_VERSION "\

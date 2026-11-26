@@ -947,7 +947,7 @@ class Cleaner:
             return isinstance(data, dict) and isinstance(data.get("outputs"), dict) and isinstance(data.get("rustc_fingerprint"), int)
         if item.kind == "node":
             return (path.parent / "package.json").is_file() and any((path.parent / name).is_file() for name in (
-                "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock", "bun.lockb"))
+                "package-lock.json", "pnpm-lock.yaml", "bun.lock", "bun.lockb"))
         if item.kind in ("flutter", "dart"):
             return (path.parent / "pubspec.yaml").is_file()
         if item.kind == "gradle":

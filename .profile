@@ -1,13 +1,7 @@
 
 export ANDROID_HOME=~/Android/Sdk/
-export ANDROID_NDK_HOME="$ANDROID_HOME/ndk-bundle"
 
-export PATH="$HOME/.cargo/bin:$ANDROID_HOME/platform-tools/:$HOME/.local/bin/:$(which yarn &>/dev/null && cd && yarn --no-default-rc global bin --offline):$HOME/go/bin:$PATH"
-
-export NVM_DIR="$(realpath ~/.nvm)"
-[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"  # This loads nvm
-
-which rbenv > /dev/null 2>&1 && eval "$(rbenv init - bash)"
+export PATH="$HOME/.cargo/bin:${ANDROID_HOME%/}/platform-tools:$HOME/.local/bin:$HOME/go/bin:$PATH"
 
 source-env-if-exists () {
     [ -f "$1" ] || return 0
